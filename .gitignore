@@ -3,5 +3,6 @@ dist/
 *.log
 .DS_Store
 viewer/recording.js
+viewer/lab.js
 .env
 .cache/

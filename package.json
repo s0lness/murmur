@@ -12,6 +12,8 @@
     "distill": "tsx src/sim/distill-run.ts",
     "spike": "tsx src/spike/run.ts",
     "rooms": "tsx src/rooms/demo.ts",
+    "protocols": "tsx src/rooms/protocol-demo.ts",
+    "lab": "tsx src/rooms/lab-record.ts",
     "view": "node viewer/serve.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

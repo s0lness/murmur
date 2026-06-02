@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>murmur — rooms & protocols</title>
+<style>
+  :root { --bg:#0e1116; --panel:#161b22; --panel2:#1c232c; --line:#2d333b; --text:#c9d1d9; --muted:#8b949e; --green:#3fb950; --amber:#d29922; --red:#f85149; --blue:#58a6ff; --purple:#bc8cff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif; }
+  .mono { font-family:ui-monospace,Consolas,monospace; }
+  header { padding:12px 20px; border-bottom:1px solid var(--line); background:var(--panel); }
+  header h1 { margin:0; font-size:15px; } header h1 .dot { color:var(--purple); }
+  header .sub { color:var(--muted); font-size:12px; }
+  main { display:grid; grid-template-columns:1fr 1fr; gap:0; }
+  .col { padding:18px 20px; } .col + .col { border-left:1px solid var(--line); }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin:0 0 12px; }
+  .charter { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:14px; }
+  .charter .etq { font-style:italic; color:var(--text); margin-bottom:8px; }
+  .chip { display:inline-block; padding:1px 8px; border-radius:20px; font-size:11px; background:var(--panel2); border:1px solid var(--line); margin:1px 3px 1px 0; }
+  .row { display:flex; align-items:center; gap:8px; padding:6px 10px; border-left:2px solid var(--line); margin-bottom:5px; background:var(--panel); border-radius:0 6px 6px 0; font-size:13px; }
+  .row.ok { border-left-color:var(--green); } .row.no { border-left-color:var(--red); }
+  .row .who { font-weight:600; min-width:70px; } .row .act { color:var(--muted); flex:1; }
+  .row .res.ok { color:var(--green); } .row .res.no { color:var(--red); }
+  table { width:100%; border-collapse:collapse; margin-bottom:8px; font-size:13px; }
+  th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.5px; }
+  .proto { color:var(--blue); } .price { font-weight:600; }
+  .surplus { color:var(--muted); font-size:12px; } .msg { color:var(--amber); }
+  .roomname { color:var(--purple); font-weight:600; }
+  .note { color:var(--muted); font-size:12px; margin-top:8px; }
+  .empty { padding:40px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header><h1><span class="dot">●</span> murmur — rooms &amp; protocols</h1>
+  <div class="sub mono">charter enforcement (pure code) · the negotiation menu (per-deal agreement)</div></header>
+<main id="app"><div class="empty">Run <code>npm run lab</code>, then refresh.</div></main>
+<script src="lab.js"></script>
+<script>
+const L = window.LAB;
+if (L) render();
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])); }
+
+function render() {
+  const c = L.enforcement.charter;
+  const dom = c.allowedDomains ? c.allowedDomains.join(", ") : "any";
+  const enf = L.enforcement.events.map(e => `
+    <div class="row ${e.ok?'ok':'no'}">
+      <span class="who">${esc(e.agent)}</span>
+      <span class="act mono">${esc(e.action)}</span>
+      <span class="res ${e.ok?'ok':'no'}">${e.ok?'✓':'✗'} ${esc(e.detail)}</span>
+    </div>`).join("");
+
+  const rooms = L.protocols.rooms;
+  const proto = L.protocols.deals.map(d => `
+    <div style="margin-bottom:16px">
+      <div class="mono" style="color:var(--muted);font-size:12px;margin-bottom:4px">
+        ${esc(d.item)} — buyer max ${d.buyerMax} · seller min ${d.sellerMin} · list ${d.list}</div>
+      <table><thead><tr><th>room</th><th>protocol</th><th>price</th><th>split</th><th>msgs</th></tr></thead><tbody>
+      ${rooms.map(r => { const o = d.byRoom[r.id]; return `<tr>
+        <td class="roomname">${esc(r.id)}</td>
+        ${o ? `<td class="proto mono">${esc(o.protocol)}</td>
+               <td class="price">${o.price}</td>
+               <td class="surplus">buyer +${o.buyerSurplus} · seller +${o.sellerSurplus}</td>
+               <td class="msg">${o.messages}</td>`
+            : `<td colspan="4" class="surplus">no deal</td>`}
+      </tr>`; }).join("")}
+      </tbody></table>
+    </div>`).join("");
+
+  document.getElementById("app").innerHTML = `
+    <div class="col">
+      <h2>charter enforcement — ${esc(c.id)}</h2>
+      <div class="charter">
+        <div class="etq">“${esc(c.etiquette)}”</div>
+        <span class="chip">min trust ${c.minTrust}</span>
+        <span class="chip">domains: ${esc(dom)}</span>
+        <span class="chip">rate ${c.maxSignalsPerWindow}/${c.windowTicks}</span>
+        ${c.protocols.map(p=>`<span class="chip">${esc(p)}</span>`).join("")}
+      </div>
+      ${enf}
+      <div class="note">Etiquette is advisory (an LLM reads it). The ✓/✗ rulings above are pure code — admission, schema, and rate — so an agent that ignored the rules still gets reined in.</div>
+    </div>
+    <div class="col">
+      <h2>the negotiation menu — same pairs, different rooms</h2>
+      ${proto}
+      <div class="note">The room's charter sets which protocols are allowed; the per-deal agreement picks the fastest viable one. Same pair → different price, surplus split, and message cost.</div>
+    </div>`;
+}
+</script>
+</body>
+</html>
