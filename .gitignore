@@ -4,5 +4,6 @@ dist/
 .DS_Store
 viewer/recording.js
 viewer/lab.js
+viewer/pipeline.js
 .env
 .cache/

@@ -15,6 +15,7 @@
     "protocols": "tsx src/rooms/protocol-demo.ts",
     "lab": "tsx src/rooms/lab-record.ts",
     "charter-sim": "tsx src/sim/charter-sim.ts",
+    "pipeline": "tsx src/sim/pipeline-record.ts",
     "view": "node viewer/serve.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

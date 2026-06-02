@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>murmur — pipeline</title>
+<style>
+  :root { --bg:#0e1116; --panel:#161b22; --panel2:#1c232c; --line:#2d333b; --text:#c9d1d9; --muted:#8b949e; --green:#3fb950; --amber:#d29922; --red:#f85149; --blue:#58a6ff; --purple:#bc8cff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif; }
+  .mono { font-family:ui-monospace,Consolas,monospace; }
+  header { padding:12px 20px; border-bottom:1px solid var(--line); background:var(--panel); }
+  header h1 { margin:0; font-size:15px; } header h1 .dot { color:var(--purple); }
+  header .sub { color:var(--muted); font-size:12px; }
+  main { display:grid; grid-template-columns:1.1fr 1fr; }
+  .col { padding:18px 20px; } .col + .col { border-left:1px solid var(--line); }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin:0 0 12px; }
+  .agent { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:10px; }
+  .agent .persona { font-weight:600; font-size:13px; }
+  .said { font-style:italic; color:var(--text); font-size:12px; margin:4px 0 8px; }
+  .flow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; }
+  .arrow { color:var(--muted); }
+  .pill { display:inline-block; padding:1px 8px; border-radius:20px; font-size:11px; background:var(--panel2); border:1px solid var(--line); }
+  .pill.market { color:var(--blue); border-color:#1f3b52; }
+  .pill.bazaar { color:var(--purple); border-color:#3a2b52; }
+  .pill.held { color:var(--amber); border-color:#4a3a1a; }
+  .k-seek{color:var(--blue);} .k-offer{color:var(--green);} .k-swap,.k-barter{color:var(--purple);}
+  .tag { display:inline-block; background:var(--panel2); border:1px solid var(--line); border-radius:4px; padding:0 5px; margin:1px 2px 0 0; font-size:11px; color:var(--muted); }
+  .room { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; margin-bottom:14px; }
+  .room h3 { margin:0 0 4px; font-size:14px; } .room.market h3 { color:var(--blue); } .room.bazaar h3 { color:var(--purple); }
+  .room .etq { font-style:italic; color:var(--muted); font-size:12px; margin-bottom:8px; }
+  .deal { padding:6px 10px; border-left:2px solid var(--green); margin-bottom:5px; background:var(--panel2); border-radius:0 6px 6px 0; font-size:13px; }
+  .deal.no { border-left-color:var(--red); color:var(--muted); }
+  .deal .proto { color:var(--blue); } .deal .price { font-weight:600; } .deal .sur { color:var(--muted); font-size:12px; } .deal .msg { color:var(--amber); }
+  .empty { padding:40px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header><h1><span class="dot">●</span> murmur — full pipeline</h1>
+  <div class="sub mono">words → distilled → routed to a charter room → matched → closed by the room's mechanism</div></header>
+<main id="app"><div class="empty">Run <code>npm run pipeline</code>, then refresh.</div></main>
+<script src="pipeline.js"></script>
+<script>
+const P = window.PIPELINE;
+if (P) render();
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])); }
+
+function render() {
+  const routeOf = {};
+  for (const r of P.routing) routeOf[r.agentId + "|" + r.domain] = r;
+
+  const agents = P.agents.map(a => {
+    const intents = a.intents.map(i => {
+      const tags = (i.publicTags ?? i.tags).map(t=>`<span class="tag">${esc(t)}</span>`).join("");
+      let dest;
+      if (i.active === false) dest = `<span class="pill held">⏸ held</span>`;
+      else { const r = routeOf[a.agentId + "|" + i.domain];
+        const room = r ? r.room : "—";
+        dest = `<span class="pill ${room}">${room}${r && !r.accepted ? " ✗" : ""}</span>`; }
+      return `<div class="flow" style="margin-top:6px">
+        <span class="k-${i.kind} mono">${i.kind.toUpperCase()}</span>
+        <span class="mono" style="color:var(--muted)">${esc(i.domain)}</span>
+        <span class="arrow">→</span> ${dest}
+        <div style="flex-basis:100%">${tags}</div>
+      </div>`;
+    }).join("") || `<div class="said" style="color:var(--muted)">(no intent — silent)</div>`;
+    return `<div class="agent">
+      <div class="persona">${esc(a.persona)}</div>
+      <div class="said">“${a.utterances.map(esc).join("” · “")}”</div>
+      ${intents}
+    </div>`;
+  }).join("");
+
+  const chips = (c) => `<span class="pill">protocols: ${c.protocols.join(", ")}</span>`;
+  const mDeals = P.market.length ? P.market.map(d => d.status === "deal"
+    ? `<div class="deal"><b>${esc(d.seek)}</b> ⇄ <b>${esc(d.offer)}</b> · <span class="proto mono">${esc(d.protocol)}</span> @ <span class="price">${d.price}</span> <span class="sur">buyer +${d.buyerSurplus} · seller +${d.sellerSurplus}</span> <span class="msg">${d.messages} msg</span></div>`
+    : `<div class="deal no">${esc(d.seek)} ⇄ ${esc(d.offer)} · matched but no agreement (reserves don't overlap)</div>`).join("") : `<div class="empty">no deals</div>`;
+  const bDeals = P.bazaar.length ? P.bazaar.map(d =>
+    `<div class="deal"><b>${esc(d.a)}</b> ⇄ <b>${esc(d.b)}</b> · barter swap · [${d.haveA.map(esc).join("+")}] ↔ [${d.haveB.map(esc).join("+")}]</div>`).join("") : `<div class="empty">no double coincidence</div>`;
+
+  document.getElementById("app").innerHTML = `
+    <div class="col"><h2>agents — said → distilled → routed</h2>${agents}</div>
+    <div class="col"><h2>rooms — matched & closed</h2>
+      <div class="room market"><h3>sealed-bid market <span style="font-size:11px;color:var(--muted)">goods.*</span></h3>
+        <div class="etq">“${esc(P.marketCharter.etiquette)}”</div>${chips(P.marketCharter)}
+        <div style="margin-top:10px">${mDeals}</div></div>
+      <div class="room bazaar"><h3>barter bazaar <span style="font-size:11px;color:var(--muted)">anything</span></h3>
+        <div class="etq">“${esc(P.bazaarCharter.etiquette)}”</div>${chips(P.bazaarCharter)}
+        <div style="margin-top:10px">${bDeals}</div></div>
+    </div>`;
+}
+</script>
+</body>
+</html>
