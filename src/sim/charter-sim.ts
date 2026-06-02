@@ -1,10 +1,10 @@
 import { blur, type PrivateIntent } from "../core/intent";
 import { loadDotenv } from "../intake/env";
 import { LLMDistiller } from "../intake/llmDistiller";
-import { ambientMarket } from "../intake/scenarios";
+import { mixedMarket } from "../intake/scenarios";
 import { keywordMatch } from "../matching/keywordMatcher";
 import { agree, type Buyer, type Seller } from "../negotiate/protocols";
-import { sealedBidMarket } from "../rooms/charters";
+import { barterBazaar, sealedBidMarket } from "../rooms/charters";
 import { Room } from "../rooms/room";
 
 loadDotenv();
@@ -13,66 +13,84 @@ if (!process.env.ANTHROPIC_API_KEY) {
   process.exit(1);
 }
 
-// Hand-assigned trust until the web-of-trust exists. buyer-de is below the bar.
-const TRUST: Record<string, number> = {
-  "seller-fr": 0.8, "buyer-fr": 0.7, "seller-us": 0.8, "buyer-us": 0.6, "buyer-de": 0.3, "noise-fr": 0.9,
-};
-const trustOf = (id: string) => TRUST[id] ?? 0.7;
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+const cities = (xs: string[] = []) => xs.filter((t) => /^city:/i.test(t)).map(norm);
+const dates = (xs: string[] = []) => xs.filter((t) => /\d{4}/.test(t)).map(norm);
 
-console.log("\n▶ murmur — full pipeline: words → distilled → charter room → matched → closed\n");
+/**
+ * Barter agreement: a double coincidence of wants. Matched structurally on the
+ * PLACE dimension (the swap itself), with the date treated as overlap-if-present
+ * — because the distiller doesn't always emit symmetric have/want tags, exact
+ * full-tag matching is too brittle for real swaps. (A semantic matcher would be
+ * more robust here — noted for later.)
+ */
+function doubleCoincidence(a: PrivateIntent, b: PrivateIntent): boolean {
+  const aWant = cities(a.want), aHave = cities(a.have);
+  const bWant = cities(b.want), bHave = cities(b.have);
+  if (!aWant.length || !bWant.length) return false;
+  const placeMatch = aWant.every((w) => bHave.includes(w)) && bWant.every((w) => aHave.includes(w));
+  if (!placeMatch) return false;
+  const aD = [...dates(a.have), ...dates(a.want)], bD = [...dates(b.have), ...dates(b.want)];
+  return !aD.length || !bD.length || aD.some((d) => bD.includes(d)); // unspecified ⇒ negotiable
+}
+
+console.log("\n▶ murmur — multi-room: goods → market, swaps → bazaar\n");
 
 const distiller = new LLMDistiller();
 const agents = await Promise.all(
-  ambientMarket().map(async (p) => ({ agentId: p.agentId, intents: await distiller.distill(p) })),
+  mixedMarket().map(async (p) => ({ agentId: p.agentId, intents: await distiller.distill(p) })),
 );
 
-const room = new Room(sealedBidMarket);
-console.log(`room: ${room.charter.id}  ·  "${room.rulesOfTheRoom()}"\n`);
-
-// ── join (enforced admission) ──
-console.log("─ admission ──────────────────────────────────────");
-const members = new Set<string>();
+const market = new Room(sealedBidMarket); // goods.* , price protocols
+const bazaar = new Room(barterBazaar); // anything, barter / NL
 for (const a of agents) {
-  const r = room.join({ agentId: a.agentId, trustScore: trustOf(a.agentId) });
-  if (r.ok) members.add(a.agentId);
-  console.log(`  ${a.agentId.padEnd(11)} trust ${trustOf(a.agentId)}  ${r.ok ? "✓ admitted" : "✗ " + r.reason}`);
+  market.join({ agentId: a.agentId, trustScore: 1 });
+  bazaar.join({ agentId: a.agentId, trustScore: 1 });
 }
 
-// ── publish blurred signals (enforced schema + rate) ──
-const live: { agentId: string; intent: PrivateIntent }[] = [];
+// Route each active intent to the first room whose charter admits its domain.
+const liveIn = new Map<Room, { agentId: string; intent: PrivateIntent }[]>([[market, []], [bazaar, []]]);
+console.log("─ routing (by domain, enforced by charter) ───────");
 for (const a of agents) {
   for (const intent of a.intents) {
     if (intent.active === false) continue;
-    const r = room.publish(a.agentId, blur(intent, a.agentId), 0);
-    if (r.accepted) live.push({ agentId: a.agentId, intent });
+    const target = intent.domain.startsWith("goods.") ? market : bazaar;
+    const r = target.publish(a.agentId, blur(intent, a.agentId), 0);
+    const where = target === market ? "market" : "bazaar";
+    console.log(`  ${a.agentId.padEnd(13)} ${intent.kind.toUpperCase().padEnd(5)} ${intent.domain.padEnd(14)} → ${where}  ${r.accepted ? "✓" : "✗ " + r.reason}`);
+    if (r.accepted) liveIn.get(target)!.push({ agentId: a.agentId, intent });
   }
 }
 
-// ── match accepted signals, close via the room's protocol menu ──
-const seeks = live.filter((x) => x.intent.kind === "seek");
-const offers = live.filter((x) => x.intent.kind === "offer");
-console.log(`\n─ matches & deals (${live.length} signals live, ${room.rejections.length} posts rejected) ─`);
-let any = false;
-for (const s of seeks) {
-  for (const o of offers) {
-    if (!keywordMatch(s.intent, o.intent, 0.3)) continue;
-    if (s.intent.valuation === undefined || o.intent.valuation === undefined) {
-      console.log(`  ${s.agentId} ⇄ ${o.agentId}  matched but unpriced — skipped`);
-      continue;
-    }
-    const buyer: Buyer = { max: s.intent.valuation };
-    const seller: Seller = { min: o.intent.valuation, list: Math.round(o.intent.valuation * 1.3) };
-    const deal = agree(room.charter.protocols, buyer, seller);
-    any = true;
-    if (!deal) { console.log(`  ${s.agentId} ⇄ ${o.agentId}  no agreement`); continue; }
-    console.log(
-      `  ${s.agentId} ⇄ ${o.agentId}  ${deal.protocol.padEnd(14)} @ ${deal.price}` +
-        `   buyer +${deal.buyerSurplus} seller +${deal.sellerSurplus}  ${deal.messages} msg`,
-    );
+// ── market: priced commerce via the protocol menu ──
+console.log(`\n─ market deals (${sealedBidMarket.protocols.join(", ")}) ─`);
+const mLive = liveIn.get(market)!;
+const seeks = mLive.filter((x) => x.intent.kind === "seek");
+const offers = mLive.filter((x) => x.intent.kind === "offer");
+let mAny = false;
+for (const s of seeks) for (const o of offers) {
+  if (!keywordMatch(s.intent, o.intent, 0.3)) continue;
+  if (s.intent.valuation === undefined || o.intent.valuation === undefined) continue;
+  const buyer: Buyer = { max: s.intent.valuation };
+  const seller: Seller = { min: o.intent.valuation, list: Math.round(o.intent.valuation * 1.3) };
+  const deal = agree(sealedBidMarket.protocols, buyer, seller);
+  mAny = true;
+  console.log(deal
+    ? `  ${s.agentId} ⇄ ${o.agentId}  ${deal.protocol} @ ${deal.price}  buyer +${deal.buyerSurplus} seller +${deal.sellerSurplus}  ${deal.messages} msg`
+    : `  ${s.agentId} ⇄ ${o.agentId}  no agreement`);
+}
+if (!mAny) console.log("  (none)");
+
+// ── bazaar: swaps via barter (double coincidence) ──
+console.log(`\n─ bazaar deals (barter) ─`);
+const bLive = liveIn.get(bazaar)!.filter((x) => x.intent.kind === "swap" || x.intent.kind === "barter");
+let bAny = false;
+for (let i = 0; i < bLive.length; i++) for (let j = i + 1; j < bLive.length; j++) {
+  const a = bLive[i]!, b = bLive[j]!;
+  if (doubleCoincidence(a.intent, b.intent)) {
+    bAny = true;
+    console.log(`  ${a.agentId} ⇄ ${b.agentId}  barter swap  [${(a.intent.have ?? []).join("+")}] ↔ [${(b.intent.have ?? []).join("+")}]`);
   }
 }
-if (!any) console.log("  (none)");
-
-console.log(`\n─ enforcement log ────────────────────────────────`);
-for (const r of room.rejections) console.log(`  ✗ ${r.agentId}: ${r.reason}`);
+if (!bAny) console.log("  (none — no double coincidence)");
 console.log("");

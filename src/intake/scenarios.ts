@@ -53,3 +53,19 @@ export function ambientJournal(): PersonaUtterances[] {
     },
   ];
 }
+
+/**
+ * Mixed domains so intents route to different room types: priced goods → the
+ * sealed-bid market; active apartment swaps → the barter bazaar. Swaps are
+ * phrased as definite (not "I'd maybe…") so the distiller marks them active.
+ */
+export function mixedMarket(): PersonaUtterances[] {
+  return [
+    { agentId: "switch-seller", persona: "someone in Paris", utterances: ["selling my Nintendo Switch with Mario Kart, looking for around 180€"] },
+    { agentId: "switch-buyer", persona: "someone in Lyon", utterances: ["want to buy a used Nintendo Switch, can go up to 240"] },
+    { agentId: "alice-nyc", persona: "Alice in New York", utterances: ["I want to swap my New York apartment for a place in Berlin this June"] },
+    { agentId: "bjorn-ber", persona: "Björn in Berlin", utterances: ["swapping my Berlin flat for somewhere in New York this June"] },
+    { agentId: "chloe-par", persona: "Chloé in Paris", utterances: ["happy to swap my Paris apartment for New York this June"] },
+    { agentId: "noise", persona: "someone", utterances: ["lovely weather today, nothing to report"] },
+  ];
+}
