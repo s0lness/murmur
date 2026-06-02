@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>murmur — replay</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel2: #1c232c; --line: #2d333b;
+    --text: #c9d1d9; --muted: #8b949e; --green: #3fb950; --amber: #d29922;
+    --red: #f85149; --blue: #58a6ff; --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+  }
+  .mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+  header {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 12px 18px; border-bottom: 1px solid var(--line); background: var(--panel);
+    position: sticky; top: 0; z-index: 5;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .3px; }
+  header h1 .dot { color: var(--purple); }
+  .scenario { color: var(--muted); font-size: 13px; }
+  .controls { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-wrap: wrap; }
+  button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 11px; cursor: pointer; font-size: 13px;
+  }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--green); color: #04240f; border-color: var(--green); font-weight: 600; }
+  input[type=range] { width: 200px; accent-color: var(--green); }
+  select { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
+  label.toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; user-select: none; }
+  .ticklabel { color: var(--muted); font-size: 12px; min-width: 84px; }
+
+  .tally { display: flex; gap: 16px; padding: 8px 18px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  .tally .stat { font-size: 12px; color: var(--muted); }
+  .tally .stat b { color: var(--text); font-size: 15px; margin-right: 4px; }
+
+  main { display: grid; grid-template-columns: 270px 1fr 1.2fr; gap: 0; height: calc(100vh - 100px); }
+  .col { overflow-y: auto; padding: 14px; }
+  .col + .col { border-left: 1px solid var(--line); }
+  .col h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0 0 12px; }
+
+  .agent { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+  .agent .persona { font-weight: 600; font-size: 13px; }
+  .chip { display: inline-block; padding: 1px 7px; border-radius: 20px; font-size: 11px; background: var(--panel2); border: 1px solid var(--line); }
+  .agent .pseudo { color: var(--muted); margin-top: 3px; }
+  .sig { margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--line); font-size: 12px; }
+  .secret { color: var(--amber); font-size: 12px; margin-top: 4px; }
+
+  .k-seek { color: var(--blue); } .k-offer { color: var(--green); }
+  .k-swap, .k-barter { color: var(--purple); }
+  .tag { display: inline-block; background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; margin: 1px 2px 0 0; font-size: 11px; color: var(--muted); }
+
+  .feed-item { padding: 7px 10px; border-left: 2px solid var(--line); margin-bottom: 6px; background: var(--panel); border-radius: 0 6px 6px 0; font-size: 13px; animation: pop .25s ease; }
+  .feed-item.signal { border-left-color: var(--blue); }
+  .feed-item.interest { border-left-color: var(--amber); }
+  .feed-item .who { font-weight: 600; }
+  .feed-item .t { color: var(--muted); font-size: 11px; float: right; }
+
+  .neg { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 12px; animation: pop .25s ease; }
+  .neg .head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .neg .parties { font-weight: 600; font-size: 13px; }
+  .neg .domain { color: var(--muted); font-size: 11px; }
+  .badge { padding: 1px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .b-open { background: rgba(210,153,34,.15); color: var(--amber); border: 1px solid var(--amber); }
+  .b-deal { background: rgba(63,185,80,.15); color: var(--green); border: 1px solid var(--green); }
+  .b-fail { background: rgba(248,81,73,.12); color: var(--red); border: 1px solid var(--red); }
+  .zopa { color: var(--muted); font-size: 11px; margin: 4px 0 8px; }
+  .msgs { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
+  .bubble { max-width: 78%; padding: 5px 10px; border-radius: 12px; font-size: 12px; animation: pop .2s ease; }
+  .bubble.left { align-self: flex-start; background: var(--panel2); border: 1px solid var(--line); border-bottom-left-radius: 3px; }
+  .bubble.right { align-self: flex-end; background: #15303a; border: 1px solid #1f4d5e; border-bottom-right-radius: 3px; }
+  .bubble .mt { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; }
+
+  .empty { padding: 60px 24px; text-align: center; color: var(--muted); }
+  .empty code { background: var(--panel2); padding: 2px 7px; border-radius: 5px; color: var(--text); }
+
+  .said { font-size: 12px; font-style: italic; color: var(--text); background: var(--panel2); border-left: 2px solid var(--purple); padding: 5px 8px; border-radius: 0 5px 5px 0; margin-bottom: 6px; }
+  .said .lbl { font-style: normal; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); display: block; margin-bottom: 2px; }
+  .sig.held { opacity: .45; border-left: 2px dashed var(--muted); padding-left: 6px; }
+  .conf { float: right; font-size: 10px; color: var(--muted); }
+  .held-badge { font-size: 10px; color: var(--amber); }
+  .rationale { color: var(--muted); font-size: 11px; font-style: italic; margin-top: 3px; }
+  @keyframes pop { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="recording.js"></script>
+<script>
+const R = window.RECORDING;
+const app = document.getElementById("app");
+
+if (!R) {
+  app.innerHTML = `<div class="empty">
+    No recording loaded.<br><br>
+    Run <code>npm run record -- switch-sale</code> (or <code>apartment-swap</code>),<br>
+    then refresh this page.
+  </div>`;
+} else {
+  boot();
+}
+
+function boot() {
+  // ---- indexes -------------------------------------------------------------
+  const personaBy = {}, intentsBy = {}, signalById = {};
+  for (const a of R.agents) {
+    personaBy[a.pseudonym] = a.persona;
+    intentsBy[a.pseudonym] = a.intents;
+    for (const i of a.intents) signalById[i.id] = { ...i, pseudonym: a.pseudonym };
+  }
+  const pub = (i) => ({ kind: i.kind, domain: i.domain, region: i.region, tags: i.publicTags ?? i.tags });
+  const maxTick = R.events.reduce((m, e) => Math.max(m, e.t), 0);
+
+  // group negotiation events by session
+  const sessions = {};
+  for (const e of R.events) {
+    if (!("sessionId" in e)) continue;
+    const s = (sessions[e.sessionId] ??= { id: e.sessionId, opened: null, msgs: [], closed: null, failed: null });
+    if (e.type === "negotiation_opened") s.opened = e;
+    else if (e.type === "negotiation_msg") s.msgs.push(e);
+    else if (e.type === "deal_closed") s.closed = e;
+    else if (e.type === "deal_failed") s.failed = e;
+  }
+  const parties = (sessionId, domain) => sessionId.slice(domain.length + 1).split("~");
+
+  // ---- state ---------------------------------------------------------------
+  let tick = 0, playing = false, god = false, speed = 3, timer = null;
+
+  // ---- shell ---------------------------------------------------------------
+  app.innerHTML = `
+    <header>
+      <h1><span class="dot">●</span> murmur</h1>
+      <span class="scenario mono">${R.scenario}</span>
+      <div class="controls">
+        <button id="play" class="primary">▶ play</button>
+        <button id="step">step ▸</button>
+        <button id="restart">⟲</button>
+        <select id="speed">
+          <option value="1">1×</option><option value="3" selected>3×</option>
+          <option value="6">6×</option><option value="12">12×</option>
+        </select>
+        <input type="range" id="scrub" min="0" max="${maxTick}" value="0" />
+        <span class="ticklabel mono" id="ticklabel">tick 0 / ${maxTick}</span>
+        <label class="toggle"><input type="checkbox" id="god" /> 👁 god mode</label>
+      </div>
+    </header>
+    <div class="tally" id="tally"></div>
+    <main>
+      <div class="col" id="agents"><h2>agents</h2><div id="agentList"></div></div>
+      <div class="col" id="gossipCol"><h2>gossip — the ambient layer</h2><div id="gossip"></div></div>
+      <div class="col" id="negCol"><h2>negotiations — private</h2><div id="negs"></div></div>
+    </main>`;
+
+  const $ = (id) => document.getElementById(id);
+  const upto = (type) => R.events.filter((e) => e.type === type && e.t <= tick);
+
+  // ---- renders -------------------------------------------------------------
+  function renderAgents() {
+    $("agentList").innerHTML = R.agents.map((a) => {
+      // Provenance funnel: what the user SAID (only present in M1 distill runs).
+      const said = (a.utterances && a.utterances.length)
+        ? `<div class="said"><span class="lbl">said to their agent</span>${a.utterances.map((u) => `“${esc(u)}”`).join("<br>")}</div>`
+        : "";
+
+      const sigs = a.intents.map((i) => {
+        const p = pub(i);
+        const tags = p.tags.map((t) => `<span class="tag">${t}</span>`).join("");
+        const held = i.active === false;
+        const conf = i.confidence != null ? `<span class="conf">${Math.round(i.confidence*100)}%</span>` : "";
+        const heldBadge = held ? ` <span class="held-badge">⏸ held</span>` : "";
+        let secret = "";
+        if (god) {
+          if (i.valuation != null) secret += `<div class="secret">reserve ${i.valuation}</div>`;
+          if (i.have || i.want) secret += `<div class="secret">have [${(i.have||[]).join(", ")}] · want [${(i.want||[]).join(", ")}]</div>`;
+          if (i.rationale) secret += `<div class="rationale">${esc(i.rationale)}</div>`;
+        }
+        return `<div class="sig${held ? " held" : ""}">
+          ${conf}
+          <span class="k-${p.kind} mono">${p.kind.toUpperCase()}</span>
+          <span class="mono">· ${p.domain} · ${p.region}</span>${heldBadge}<br>${tags}${secret}
+        </div>`;
+      }).join("") || `<div class="rationale">(distilled nothing — correctly silent)</div>`;
+
+      return `<div class="agent">
+        <div class="persona">${a.persona}</div>
+        <div class="pseudo mono"><span class="chip">${a.pseudonym}</span></div>
+        ${said}
+        ${sigs}
+      </div>`;
+    }).join("");
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]));
+  }
+
+  function renderTally() {
+    const c = (t) => upto(t).length;
+    $("tally").innerHTML = `
+      <div class="stat"><b>${c("signal_published")}</b>signals</div>
+      <div class="stat"><b>${c("negotiation_opened")}</b>contacts</div>
+      <div class="stat"><b style="color:var(--green)">${c("deal_closed")}</b>deals</div>
+      <div class="stat"><b style="color:var(--red)">${c("deal_failed")}</b>failed</div>`;
+  }
+
+  function renderGossip() {
+    const items = R.events
+      .filter((e) => (e.type === "signal_published" || e.type === "interest") && e.t <= tick)
+      .map((e) => {
+        if (e.type === "signal_published") {
+          const sig = signalById[e.signalId];
+          const p = sig ? pub(sig) : { kind: e.kind, domain: e.domain, region: "?", tags: [] };
+          const tags = p.tags.map((t) => `<span class="tag">${t}</span>`).join("");
+          return `<div class="feed-item signal">
+            <span class="t mono">t${e.t}</span>
+            <span class="who">${personaBy[e.by] ?? e.by}</span>
+            broadcasts <span class="k-${p.kind} mono">${p.kind.toUpperCase()}</span>
+            <span class="mono">· ${p.domain} · ${p.region}</span><br>${tags}
+          </div>`;
+        }
+        return `<div class="feed-item interest">
+          <span class="t mono">t${e.t}</span>
+          <span class="who">${personaBy[e.by] ?? e.by}</span>
+          is interested in <b>${personaBy[e.towards] ?? e.towards}</b>'s listing
+          <span class="mono" style="color:var(--muted)">(match ${(e.score*100|0)}%)</span>
+        </div>`;
+      });
+    $("gossip").innerHTML = items.join("") || `<div class="empty">…quiet so far</div>`;
+  }
+
+  function renderNegs() {
+    const visible = Object.values(sessions).filter((s) => s.opened && s.opened.t <= tick);
+    $("negs").innerHTML = visible.map((s) => {
+      const domain = s.opened.domain;
+      const [pl, pr] = parties(s.id, domain);
+      const failed = s.failed && s.failed.t <= tick;
+      const closed = s.closed && s.closed.t <= tick;
+
+      let badge = `<span class="badge b-open">negotiating…</span>`;
+      if (closed) badge = `<span class="badge b-deal">DEAL${s.closed.price != null ? " @ " + s.closed.price : ""}</span>`;
+      else if (failed) badge = `<span class="badge b-fail">FAILED — ${s.failed.reason}</span>`;
+
+      let zopa = "";
+      if (god) {
+        const il = (intentsBy[pl] || []).find((i) => i.domain === domain);
+        const ir = (intentsBy[pr] || []).find((i) => i.domain === domain);
+        const buyer = il?.kind === "seek" ? il : ir?.kind === "seek" ? ir : null;
+        const seller = il?.kind === "offer" ? il : ir?.kind === "offer" ? ir : null;
+        if (buyer?.valuation != null && seller?.valuation != null) {
+          const z = buyer.valuation - seller.valuation;
+          zopa = `<div class="zopa mono">buyer ≤ ${buyer.valuation} · seller ≥ ${seller.valuation} · ZOPA ${z >= 0 ? "+" + z : z}</div>`;
+        }
+      }
+
+      const bubbles = s.msgs.filter((m) => m.t <= tick).map((m) => {
+        const side = m.from === pl ? "left" : "right";
+        const body = m.price != null ? `${m.mtype} ${m.price}` : m.mtype;
+        return `<div class="bubble ${side}"><span class="mt">${personaBy[m.from] ?? m.from}</span><br>${body}</div>`;
+      }).join("");
+
+      return `<div class="neg">
+        <div class="head">
+          <span class="parties">${personaBy[pl] ?? pl} &nbsp;⇄&nbsp; ${personaBy[pr] ?? pr}</span>
+          ${badge}
+        </div>
+        <div class="domain mono">${domain}</div>
+        ${zopa}
+        <div class="msgs">${bubbles}</div>
+      </div>`;
+    }).join("") || `<div class="empty">…no contact yet</div>`;
+  }
+
+  function render() {
+    $("scrub").value = tick;
+    $("ticklabel").textContent = `tick ${tick} / ${maxTick}`;
+    renderTally(); renderGossip(); renderNegs();
+    const g = $("gossipCol");
+    if (playing) g.scrollTop = g.scrollHeight;
+  }
+
+  // ---- playback ------------------------------------------------------------
+  function setPlaying(on) {
+    playing = on;
+    $("play").textContent = on ? "⏸ pause" : "▶ play";
+    $("play").classList.toggle("primary", !on);
+    clearInterval(timer);
+    if (on) {
+      if (tick >= maxTick) tick = 0;
+      timer = setInterval(() => {
+        if (tick >= maxTick) { setPlaying(false); return; }
+        tick++; render();
+      }, 1000 / speed);
+    }
+  }
+
+  $("play").onclick = () => setPlaying(!playing);
+  $("step").onclick = () => { setPlaying(false); if (tick < maxTick) { tick++; render(); } };
+  $("restart").onclick = () => { setPlaying(false); tick = 0; render(); };
+  $("speed").onchange = (e) => { speed = +e.target.value; if (playing) setPlaying(true); };
+  $("scrub").oninput = (e) => { setPlaying(false); tick = +e.target.value; render(); };
+  $("god").onchange = (e) => { god = e.target.checked; renderAgents(); renderNegs(); };
+
+  renderAgents();
+  render();
+}
+</script>
+</body>
+</html>

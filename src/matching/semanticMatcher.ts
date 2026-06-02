@@ -1,0 +1,109 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { blur, type PrivateIntent } from "../core/intent";
+import { cached, cacheKey } from "../intake/cache";
+
+const MODEL = "claude-opus-4-8";
+
+/** One verdict per candidate signal. */
+export interface Verdict {
+  signalId: string;
+  relevant: boolean;
+  score: number;
+  reason: string;
+}
+
+const JUDGE_TOOL: Anthropic.Tool = {
+  name: "judge_relevance",
+  description: "Return a relevance verdict for every candidate signal.",
+  strict: true,
+  input_schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      matches: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            signalId: { type: "string" },
+            relevant: { type: "boolean" },
+            score: { type: "number" },
+            reason: { type: "string" },
+          },
+          required: ["signalId", "relevant", "score", "reason"],
+        },
+      },
+    },
+    required: ["matches"],
+  },
+};
+
+const SYSTEM = `You are the matching brain of a personal agent in an ambient-intent network.
+
+Your user has a private WANT. You overhear BLURRED public signals other agents broadcast (category, tags, region — never price or identity). Decide which signals are genuinely relevant to your user's want.
+
+Be robust where keyword matching fails:
+- SYNONYMS / paraphrase: "couch" = "sofa" = "settee" = "canapé".
+- LANGUAGE: a French "vélo de course" matches an English "road bike".
+- ABSTRACTION: a "Nintendo Switch" satisfies "a portable thing the kids can game on".
+
+But REJECT coincidental keyword overlap that isn't a real match:
+- "apple" the fruit is NOT an "Apple" laptop.
+- a couch for sale is NOT "couch-surfing" / a place to crash.
+
+A real match also needs the complementary side (a seeker wants what an offer provides) and a plausible region. Score 0–1; mark relevant=true only when you'd actually open a negotiation. Return a verdict for EVERY candidate.`;
+
+/**
+ * murmur's semantic matcher. The agent matches its OWN private want against the
+ * BLURRED public signals of others — so the privacy split holds (it never sees
+ * anyone else's private fields). Disk-cached for reproducibility.
+ */
+export class SemanticMatcher {
+  private client: Anthropic;
+  constructor(client?: Anthropic) {
+    this.client = client ?? new Anthropic();
+  }
+
+  async judge(seeker: PrivateIntent, candidates: PrivateIntent[]): Promise<Verdict[]> {
+    // Candidates are reduced to their public blur — the privacy boundary.
+    const signals = candidates.map((c) => {
+      const s = blur(c, c.id);
+      return { id: s.id, kind: s.kind, domain: s.domain, tags: s.tags, region: s.region };
+    });
+    // Guard: assert nothing private leaked into the matcher's input.
+    if (/valuation|reserve/i.test(JSON.stringify(signals))) {
+      throw new Error("privacy violation: private field reached the semantic matcher");
+    }
+
+    const myWant = {
+      kind: seeker.kind,
+      domain: seeker.domain,
+      tags: seeker.tags,
+      want: seeker.want ?? [],
+    };
+
+    const key = cacheKey("match-v2", MODEL, SYSTEM, myWant, signals);
+    const { value } = await cached<Verdict[]>(key, async () => {
+      const response = await this.client.messages.create({
+        model: MODEL,
+        max_tokens: 2048,
+        system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+        tools: [JUDGE_TOOL],
+        tool_choice: { type: "tool", name: JUDGE_TOOL.name },
+        messages: [
+          {
+            role: "user",
+            content:
+              `MY WANT (private):\n${JSON.stringify(myWant)}\n\n` +
+              `CANDIDATE SIGNALS (blurred, public):\n${JSON.stringify(signals, null, 1)}`,
+          },
+        ],
+      });
+      const block = response.content.find((b) => b.type === "tool_use");
+      if (!block || block.type !== "tool_use") throw new Error("semantic matcher: no tool call");
+      return (block.input as { matches: Verdict[] }).matches;
+    });
+    return value;
+  }
+}

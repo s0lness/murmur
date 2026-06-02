@@ -1,0 +1,29 @@
+{
+  "name": "murmur",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "An ambient-intent layer: agents broadcast blurred wants, listen, match privately, and negotiate.",
+  "scripts": {
+    "sim": "tsx src/sim/run.ts",
+    "switch": "tsx src/sim/run.ts switch-sale",
+    "swap": "tsx src/sim/run.ts apartment-swap",
+    "record": "tsx src/sim/record.ts",
+    "distill": "tsx src/sim/distill-run.ts",
+    "spike": "tsx src/spike/run.ts",
+    "rooms": "tsx src/rooms/demo.ts",
+    "view": "node viewer/serve.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.100.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
