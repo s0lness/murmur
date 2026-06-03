@@ -46,6 +46,12 @@ export function createBot(token: string): Bot {
     store.clearUser(ctx.from.id);
     return ctx.reply("Cleared your wants.");
   });
+  bot.command("rematch", async (ctx) => {
+    if (!ctx.from) return;
+    await ctx.reply("Rescanning the pool for matches…");
+    await rescan(store.intentsOf(ctx.from.id));
+    await ctx.reply("Done — I've pinged you about any new matches.");
+  });
 
   // ── consent buttons on a proposed match ──
   bot.on("callback_query:data", async (ctx) => {
@@ -95,19 +101,32 @@ export function createBot(token: string): Bot {
         "\n\nBroadcasting a blur. I'll ping you on a match.",
     );
 
-    for (const s of live) {
+    await rescan(live);
+  });
+
+  /** Match each given intent against the live pool and ping new matches.
+   *  Dedup lives in propose(), so re-scanning never double-pings. */
+  async function rescan(intents: StoredIntent[]) {
+    for (const s of intents) {
+      if (s.intent.active === false) continue;
       const hits = await matchAgainstPool(s, store.pool());
       for (const hit of hits) await propose(s, hit);
     }
-  });
+  }
 
   async function propose(a: StoredIntent, b: StoredIntent) {
-    if (store.findMatch(a.intent.id, b.intent.id)) return;
+    if (store.findMatch(a.intent.id, b.intent.id)) return; // already proposed/passed
     const m = store.addMatch(a.userId, b.userId, a.intent.id, b.intent.id);
     const kb = (id: string) => new InlineKeyboard().text("Connect", `c:${id}:yes`).text("Pass", `c:${id}:no`);
     await bot.api.sendMessage(a.userId, `🎯 Match — ${blurb(b.intent)}. Connect?`, { reply_markup: kb(m.id) });
     await bot.api.sendMessage(b.userId, `🎯 Match — ${blurb(a.intent)}. Connect?`, { reply_markup: kb(m.id) });
   }
+
+  // Safety net: periodically rescan the whole pool so dormant intents (arrived
+  // with no complement, or during a crash) still surface. Cached judges keep it
+  // cheap when nothing changed.
+  const RESCAN_MS = 3 * 60_000;
+  setInterval(() => { rescan(store.pool()).catch((e) => console.error("rescan error:", e)); }, RESCAN_MS);
 
   bot.catch((err) => console.error("bot error:", err.error));
   return bot;
