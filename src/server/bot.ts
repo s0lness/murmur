@@ -24,12 +24,21 @@ const userLabel = (u?: User) => (u?.handle ? `@${u.handle}` : u?.name ?? "your m
 export function createBot(token: string): Bot {
   const bot = new Bot(token);
   const store = new Store();
+  store.purgeSims();
   const distiller = new LLMDistiller();
   const awaitingRevision = new Map<number, string>(); // userId -> matchId (transient)
+  let simSeq = -1; // synthetic /simulate users get negative ids
 
   const remember = (u: { id: number; username?: string; first_name?: string }) =>
     store.upsertUser({ id: u.id, handle: u.username, name: u.first_name });
   const other = (m: Match, uid: number) => (uid === m.aUser ? m.bUser : m.aUser);
+
+  // Synthetic counterparts (from /simulate) have negative ids, no Telegram chat.
+  const isSim = (uid: number) => uid < 0;
+  const notify = async (uid: number, text: string, extra?: Parameters<typeof bot.api.sendMessage>[2]) => {
+    if (isSim(uid)) return; // no real chat to message
+    await bot.api.sendMessage(uid, text, extra);
+  };
 
   bot.command("start", (ctx) => { if (ctx.from) remember(ctx.from); return ctx.reply(WELCOME, { parse_mode: "Markdown" }); });
   bot.command("help", (ctx) => ctx.reply(WELCOME, { parse_mode: "Markdown" }));
@@ -44,6 +53,20 @@ export function createBot(token: string): Bot {
     await ctx.reply("Rescanning the pool for matches…");
     await rescan(store.intentsOf(ctx.from.id));
     await ctx.reply("Done — I've pinged you about any new matches.");
+  });
+  // Dev: inject a synthetic counterpart that auto-responds, so you can test the
+  // full match → negotiate → deal loop from one account.
+  bot.command("simulate", async (ctx) => {
+    if (!ctx.from) return;
+    const text = ctx.match.trim();
+    if (!text) return ctx.reply("Usage: /simulate <what the other person wants>\ne.g. /simulate looking for a road bike");
+    const simId = simSeq--;
+    store.upsertUser({ id: simId, handle: `sim${-simId}`, name: "Simulated friend" });
+    const intents = await distiller.distill({ agentId: `sim${-simId}`, persona: "a simulated friend", utterances: [text] });
+    if (intents.length === 0) return ctx.reply("Couldn't distill an intent from that.");
+    const stored = intents.map((i) => store.addIntent(simId, i));
+    await ctx.reply(`🧪 Simulated friend posted: ${stored.map((s) => fmt(s.intent)).join("; ")}\nMatching…`);
+    await rescan(stored.filter((s) => s.intent.active !== false));
   });
 
   // ── buttons: c = connect/pass on a match, d = approve/revise/abort on a proposal ──
@@ -133,9 +156,13 @@ export function createBot(token: string): Bot {
   async function propose(a: StoredIntent, b: StoredIntent) {
     if (store.findMatch(a.intent.id, b.intent.id)) return;
     const m = store.addMatch(a.userId, b.userId, a.intent.id, b.intent.id);
+    if (isSim(m.aUser)) m.aConsent = true; // sim auto-connects
+    if (isSim(m.bUser)) m.bConsent = true;
+    store.persist();
     const kb = (id: string) => new InlineKeyboard().text("Connect", `c:${id}:yes`).text("Pass", `c:${id}:no`);
-    await bot.api.sendMessage(a.userId, `🎯 Match — ${blurb(b.intent)}. Connect?`, { reply_markup: kb(m.id) });
-    await bot.api.sendMessage(b.userId, `🎯 Match — ${blurb(a.intent)}. Connect?`, { reply_markup: kb(m.id) });
+    await notify(m.aUser, `🎯 Match — ${blurb(b.intent)}. Connect?`, { reply_markup: kb(m.id) });
+    await notify(m.bUser, `🎯 Match — ${blurb(a.intent)}. Connect?`, { reply_markup: kb(m.id) });
+    if (m.aConsent && m.bConsent && m.status === "proposed") await negotiate(m);
   }
 
   /** Agents propose a price from the private reserves, then gate on both sides. */
@@ -156,21 +183,25 @@ export function createBot(token: string): Bot {
     }
     if (price == null) { await connect(m); return; } // swap / no overlap / no price → just connect
 
-    m.price = price; m.status = "negotiating"; m.aApprove = false; m.bApprove = false; store.persist();
+    m.price = price; m.status = "negotiating"; m.aApprove = false; m.bApprove = false;
+    if (isSim(m.aUser)) m.aApprove = true; // sim auto-approves the proposal
+    if (isSim(m.bUser)) m.bApprove = true;
+    store.persist();
     const item = itemName(ai.kind === "offer" ? ai : bi);
     const kb = (id: string) => new InlineKeyboard()
       .text("Approve", `d:${id}:approve`).text("Revise", `d:${id}:revise`).text("Abort", `d:${id}:abort`);
     const msg = `💬 My agent negotiated: *${item}* for *€${price}*.\nApprove?`;
-    await bot.api.sendMessage(m.aUser, msg, { parse_mode: "Markdown", reply_markup: kb(m.id) });
-    await bot.api.sendMessage(m.bUser, msg, { parse_mode: "Markdown", reply_markup: kb(m.id) });
+    await notify(m.aUser, msg, { parse_mode: "Markdown", reply_markup: kb(m.id) });
+    await notify(m.bUser, msg, { parse_mode: "Markdown", reply_markup: kb(m.id) });
+    if (m.aApprove && m.bApprove) await connect(m);
   }
 
   async function connect(m: Match) {
     m.status = "connected"; store.persist();
     const ua = store.user(m.aUser), ub = store.user(m.bUser);
     const terms = m.price != null ? ` at €${m.price}` : "";
-    await bot.api.sendMessage(m.aUser, `🎉 Deal${terms}! You're connected with ${userLabel(ub)} — sort the details and meet up.`);
-    await bot.api.sendMessage(m.bUser, `🎉 Deal${terms}! You're connected with ${userLabel(ua)} — sort the details and meet up.`);
+    await notify(m.aUser, `🎉 Deal${terms}! You're connected with ${userLabel(ub)} — sort the details and meet up.`);
+    await notify(m.bUser, `🎉 Deal${terms}! You're connected with ${userLabel(ua)} — sort the details and meet up.`);
   }
 
   // Safety net: periodically surface dormant matches. Cached judges keep it cheap.

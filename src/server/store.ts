@@ -69,4 +69,13 @@ export class Store {
     return m;
   }
   persist() { this.save(); }
+
+  /** Drop synthetic /simulate users (negative ids) — called at startup so each
+   *  run begins clean of test counterparts. */
+  purgeSims() {
+    this.data.intents = this.data.intents.filter((i) => i.userId >= 0);
+    this.data.users = this.data.users.filter((u) => u.id >= 0);
+    this.data.matches = this.data.matches.filter((m) => m.aUser >= 0 && m.bUser >= 0);
+    this.save();
+  }
 }
