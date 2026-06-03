@@ -9,7 +9,10 @@ export interface Match {
   aUser: number; bUser: number;
   aIntent: string; bIntent: string;
   aConsent: boolean; bConsent: boolean;
-  status: "proposed" | "connected" | "passed";
+  status: "proposed" | "negotiating" | "connected" | "passed";
+  price?: number;
+  aApprove?: boolean;
+  bApprove?: boolean;
 }
 
 interface Data { users: User[]; intents: StoredIntent[]; matches: Match[]; seq: number }
@@ -43,6 +46,7 @@ export class Store {
     return si;
   }
   intentsOf(userId: number) { return this.data.intents.filter((i) => i.userId === userId); }
+  intent(id: string) { return this.data.intents.find((i) => i.id === id); }
   pool() { return this.data.intents; }
   clearUser(userId: number) {
     this.data.intents = this.data.intents.filter((i) => i.userId !== userId);
