@@ -59,6 +59,19 @@ Two failure modes to avoid:
 Call the emit_intents tool exactly once with your result.`;
 
 /**
+ * Reconcile prompt: the agent maintains a STANDING portfolio, so a new message
+ * can remove/update/add — not only add. Fixes corrections piling up as duplicates.
+ */
+export const SYSTEM_PROMPT_RECONCILE = `${SYSTEM_PROMPT}
+
+# RECONCILE MODE (overrides the closing instruction above)
+You maintain the user's STANDING portfolio of intents. You are given their current intents (each with an \`id\`) and one new message. Call **reconcile_portfolio** (not emit_intents) with three lists:
+- removeIds: ids of current intents the message cancels or contradicts. A correction like "sorry, I meant sell, not buy" REMOVES the contradicted buy. "never mind the bike" / "already sold it" REMOVES it.
+- updates: current intents whose price or active-state changed — e.g. "actually 250" updates that intent's valuation. Give the id, the new valuation (or null), and active.
+- adds: genuinely new intents the message introduces (same rules and fields as before).
+Be conservative: only remove/update when the message clearly refers to an existing intent; otherwise add. Pure noise → all three lists empty. Do not re-add an intent that already exists unchanged.`;
+
+/**
  * Ablation prompt: same job, but tags must be VERBATIM — the user's literal
  * words in their original language, no translation/synonyms/normalization. Used
  * by the spike to switch OFF intake's semantic lifting and isolate how much of

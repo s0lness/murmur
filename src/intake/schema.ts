@@ -1,77 +1,86 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
-/** What the distiller returns per extracted intent. Mirrors the tool's
- *  input_schema below; Zod is the runtime guard after the tool call returns. */
+/** What the distiller returns per extracted intent. */
 export const DistilledIntent = z.object({
   kind: z.enum(["seek", "offer", "swap", "barter"]),
   domain: z.string(),
-  /** Full descriptors (private — may be finer-grained than publicTags). */
   tags: z.array(z.string()),
-  /** The blurred subset that is safe to broadcast. */
   publicTags: z.array(z.string()),
   region: z.string(),
-  /** Commerce reserve (private). null when the user named no price. */
   valuation: z.number().nullable(),
   have: z.array(z.string()),
   want: z.array(z.string()),
   confidence: z.number(),
-  /** Broadcast now, or hold back as a half-formed ambient want. */
   active: z.boolean(),
   rationale: z.string(),
 });
 export type DistilledIntent = z.infer<typeof DistilledIntent>;
 
-export const DistillerOutput = z.object({
-  intents: z.array(DistilledIntent),
-});
+export const DistillerOutput = z.object({ intents: z.array(DistilledIntent) });
 export type DistillerOutput = z.infer<typeof DistillerOutput>;
 
-/**
- * JSON Schema for the forced tool call. Structured-output constraints apply:
- * no min/max, no minLength — every object sets additionalProperties:false and
- * lists all keys in `required` (nullable fields use a type union instead of
- * being optional, so the model must always emit them).
- */
+/** Reconcile a new message against the user's standing portfolio. */
+export const ReconcileOutput = z.object({
+  removeIds: z.array(z.string()),
+  updates: z.array(z.object({ id: z.string(), valuation: z.number().nullable(), active: z.boolean() })),
+  adds: z.array(DistilledIntent),
+});
+export type ReconcileOutput = z.infer<typeof ReconcileOutput>;
+
+/** JSON Schema for one intent — shared by both tools. additionalProperties:false
+ *  and every key in `required` (nullable via type union, never optional). */
+const INTENT_ITEM = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    kind: { type: "string", enum: ["seek", "offer", "swap", "barter"], description: "Always one of these four — NOT a domain prefix like 'social'." },
+    domain: { type: "string", description: "A dotted taxonomy node, e.g. goods.games" },
+    tags: { type: "array", items: { type: "string" } },
+    publicTags: { type: "array", items: { type: "string" } },
+    region: { type: "string", description: 'Coarse geo like "FR", "FR-75", or "*"' },
+    valuation: { type: ["number", "null"] },
+    have: { type: "array", items: { type: "string" } },
+    want: { type: "array", items: { type: "string" } },
+    confidence: { type: "number" },
+    active: { type: "boolean" },
+    rationale: { type: "string" },
+  },
+  required: ["kind", "domain", "tags", "publicTags", "region", "valuation", "have", "want", "confidence", "active", "rationale"],
+};
+
 export const EMIT_INTENTS_TOOL: Anthropic.Tool = {
   name: "emit_intents",
-  description:
-    "Emit the structured intents distilled from the user's words. Call exactly once.",
-  // strict: true hard-enforces the schema (incl. the kind enum) at the API layer.
+  description: "Emit the structured intents distilled from the user's words. Call exactly once.",
+  strict: true,
+  input_schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: { intents: { type: "array", items: INTENT_ITEM } },
+    required: ["intents"],
+  },
+};
+
+export const RECONCILE_TOOL: Anthropic.Tool = {
+  name: "reconcile_portfolio",
+  description: "Reconcile the new message against the user's current intents. Call exactly once.",
   strict: true,
   input_schema: {
     type: "object",
     additionalProperties: false,
     properties: {
-      intents: {
+      removeIds: { type: "array", items: { type: "string" }, description: "ids of current intents this message cancels or contradicts" },
+      updates: {
         type: "array",
         items: {
           type: "object",
           additionalProperties: false,
-          properties: {
-            kind: {
-              type: "string",
-              enum: ["seek", "offer", "swap", "barter"],
-              description: "Always one of these four — NOT a domain prefix like 'social'.",
-            },
-            domain: { type: "string", description: "A dotted taxonomy node, e.g. goods.games" },
-            tags: { type: "array", items: { type: "string" } },
-            publicTags: { type: "array", items: { type: "string" } },
-            region: { type: "string", description: 'Coarse geo like "FR", "FR-75", or "*"' },
-            valuation: { type: ["number", "null"] },
-            have: { type: "array", items: { type: "string" } },
-            want: { type: "array", items: { type: "string" } },
-            confidence: { type: "number" },
-            active: { type: "boolean" },
-            rationale: { type: "string" },
-          },
-          required: [
-            "kind", "domain", "tags", "publicTags", "region",
-            "valuation", "have", "want", "confidence", "active", "rationale",
-          ],
+          properties: { id: { type: "string" }, valuation: { type: ["number", "null"] }, active: { type: "boolean" } },
+          required: ["id", "valuation", "active"],
         },
       },
+      adds: { type: "array", items: INTENT_ITEM },
     },
-    required: ["intents"],
+    required: ["removeIds", "updates", "adds"],
   },
 };

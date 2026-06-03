@@ -47,6 +47,15 @@ export class Store {
   }
   intentsOf(userId: number) { return this.data.intents.filter((i) => i.userId === userId); }
   intent(id: string) { return this.data.intents.find((i) => i.id === id); }
+  removeIntent(id: string) {
+    this.data.intents = this.data.intents.filter((i) => i.id !== id);
+    this.data.matches = this.data.matches.filter((m) => m.aIntent !== id && m.bIntent !== id);
+    this.save();
+  }
+  updateIntent(id: string, valuation: number | undefined, active: boolean) {
+    const si = this.data.intents.find((i) => i.id === id);
+    if (si) { si.intent.valuation = valuation; si.intent.active = active; this.save(); }
+  }
   pool() { return this.data.intents; }
   clearUser(userId: number) {
     this.data.intents = this.data.intents.filter((i) => i.userId !== userId);

@@ -2,8 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { PrivateIntent } from "../core/intent";
 import { cached, cacheKey } from "./cache";
 import type { Distiller, PersonaUtterances } from "./distiller";
-import { SYSTEM_PROMPT } from "./prompt";
-import { DistillerOutput, type DistilledIntent, EMIT_INTENTS_TOOL } from "./schema";
+import { SYSTEM_PROMPT, SYSTEM_PROMPT_RECONCILE } from "./prompt";
+import { DistillerOutput, type DistilledIntent, EMIT_INTENTS_TOOL, RECONCILE_TOOL, ReconcileOutput } from "./schema";
 
 const MODEL = "claude-opus-4-8";
 
@@ -54,21 +54,55 @@ export class LLMDistiller implements Distiller {
     });
 
     const sourceText = input.utterances.join(" / ");
-
-    return intents.map((d, i): PrivateIntent => ({
-      id: `${input.agentId}-i${i}`,
-      kind: d.kind,
-      domain: d.domain,
-      tags: d.tags,
-      publicTags: d.publicTags,
-      region: d.region,
-      valuation: d.valuation ?? undefined,
-      have: d.have.length ? d.have : undefined,
-      want: d.want.length ? d.want : undefined,
-      source: sourceText,
-      confidence: d.confidence,
-      active: d.active,
-      rationale: d.rationale,
-    }));
+    return intents.map((d, i) => toIntent(d, `${input.agentId}-i${i}`, sourceText));
   }
+
+  /**
+   * Reconcile a new message against the user's standing portfolio: returns
+   * intents to remove, updates, and brand-new adds — so corrections replace
+   * instead of piling up. Not cached (it's interactive, per-user state).
+   */
+  async reconcile(
+    existing: { id: string; kind: string; domain: string; tags: string[]; valuation: number | null; active: boolean }[],
+    persona: string,
+    utterance: string,
+  ): Promise<{ removeIds: string[]; updates: { id: string; valuation: number | null; active: boolean }[]; adds: PrivateIntent[] }> {
+    const response = await this.client().messages.create({
+      model: MODEL,
+      max_tokens: 4096,
+      system: [{ type: "text", text: SYSTEM_PROMPT_RECONCILE, cache_control: { type: "ephemeral" } }],
+      tools: [RECONCILE_TOOL],
+      tool_choice: { type: "tool", name: RECONCILE_TOOL.name },
+      messages: [{
+        role: "user",
+        content: `Current intents (JSON):\n${JSON.stringify(existing)}\n\nNew message from ${persona}: "${utterance}"`,
+      }],
+    });
+    const block = response.content.find((b) => b.type === "tool_use");
+    if (!block || block.type !== "tool_use") throw new Error("reconcile: no tool call");
+    const out = ReconcileOutput.parse(block.input);
+    return {
+      removeIds: out.removeIds,
+      updates: out.updates,
+      adds: out.adds.map((d, i) => toIntent(d, `add-${i}`, utterance)),
+    };
+  }
+}
+
+function toIntent(d: DistilledIntent, id: string, source: string): PrivateIntent {
+  return {
+    id,
+    kind: d.kind,
+    domain: d.domain,
+    tags: d.tags,
+    publicTags: d.publicTags,
+    region: d.region,
+    valuation: d.valuation ?? undefined,
+    have: d.have.length ? d.have : undefined,
+    want: d.want.length ? d.want : undefined,
+    source,
+    confidence: d.confidence,
+    active: d.active,
+    rationale: d.rationale,
+  };
 }

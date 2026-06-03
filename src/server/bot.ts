@@ -132,17 +132,27 @@ export function createBot(token: string): Bot {
     }
 
     await ctx.replyWithChatAction("typing");
-    const intents = await distiller.distill({
-      agentId: `tg${ctx.from.id}`, persona: ctx.from.first_name ?? "a friend", utterances: [ctx.message.text],
-    });
-    if (intents.length === 0) return ctx.reply("Noted — nothing to act on there. Tell me something you want to buy, sell, swap, or find.");
+    // Reconcile against the user's standing portfolio: a message can remove
+    // (corrections/cancellations), update (price), or add — not only add.
+    const existing = store.intentsOf(ctx.from.id).map((s) => ({
+      id: s.id, kind: s.intent.kind, domain: s.intent.domain,
+      tags: s.intent.publicTags ?? s.intent.tags,
+      valuation: s.intent.valuation ?? null, active: s.intent.active !== false,
+    }));
+    const { removeIds, updates, adds } = await distiller.reconcile(existing, ctx.from.first_name ?? "a friend", ctx.message.text);
 
-    const stored = intents.map((i) => store.addIntent(ctx.from!.id, i));
-    await ctx.reply(
-      "Got it:\n" + stored.map((s) => "• " + fmt(s.intent) + (s.intent.active === false ? "  (holding — half-formed)" : "")).join("\n") +
-        "\n\nBroadcasting a blur. I'll ping you on a match.",
-    );
-    await rescan(stored.filter((s) => s.intent.active !== false));
+    for (const id of removeIds) store.removeIntent(id);
+    for (const u of updates) store.updateIntent(u.id, u.valuation ?? undefined, u.active);
+    const added = adds.map((i) => store.addIntent(ctx.from!.id, i));
+
+    const lines: string[] = [];
+    if (added.length) lines.push("Added:\n" + added.map((s) => "• " + fmt(s.intent) + (s.intent.active === false ? "  (holding)" : "")).join("\n"));
+    if (updates.length) lines.push(`Updated ${updates.length} want${updates.length > 1 ? "s" : ""}.`);
+    if (removeIds.length) lines.push(`Dropped ${removeIds.length} (correction/cancel).`);
+    if (lines.length === 0) return ctx.reply("Noted — nothing changed. Tell me something you want to buy, sell, swap, or find.");
+    await ctx.reply(lines.join("\n\n") + "\n\nBroadcasting a blur. I'll ping you on a match.");
+
+    await rescan(added.filter((s) => s.intent.active !== false));
   });
 
   async function rescan(intents: StoredIntent[]) {
