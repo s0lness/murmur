@@ -1,8 +1,9 @@
-import { Bot, InlineKeyboard } from "grammy";
+import { Bot, type Context, InlineKeyboard } from "grammy";
 import { type PrivateIntent } from "../core/intent";
 import { LLMDistiller } from "../intake/llmDistiller";
+import { barterCycles, groupBuys, type Party } from "../multilateral/detect";
 import { matchAgainstPool } from "./commons";
-import { type Match, Store, type StoredIntent, type User } from "./store";
+import { type Match, type MultiDeal, Store, type StoredIntent, type User } from "./store";
 
 const WELCOME =
   "👋 I'm your murmur agent.\n\n" +
@@ -91,13 +92,17 @@ export function createBot(token: string, store: Store): Bot {
     const stored = intents.map((i) => store.addIntent(simId, i));
     await ctx.reply(`🧪 Simulated friend posted: ${stored.map((s) => fmt(s.intent)).join("; ")}\nMatching…`);
     await rescan(stored.filter((s) => s.intent.active !== false));
+    await scanMultiDeals();
   });
 
   // ── buttons: c = connect/pass on a match, d = approve/revise/abort on a proposal ──
   bot.on("callback_query:data", async (ctx) => {
     const [tag, matchId, decision] = (ctx.callbackQuery.data ?? "").split(":");
+    if (!ctx.from) return ctx.answerCallbackQuery();
+    if (tag === "g") { await handleMultiVote(ctx, matchId, decision); return; }
+
     const m = matchId ? store.match(matchId) : undefined;
-    if (!m || !ctx.from) return ctx.answerCallbackQuery("This match expired.");
+    if (!m) return ctx.answerCallbackQuery("This match expired.");
     const side = ctx.from.id === m.aUser ? "a" : ctx.from.id === m.bUser ? "b" : null;
     if (!side) return ctx.answerCallbackQuery();
 
@@ -218,6 +223,7 @@ export function createBot(token: string, store: Store): Bot {
       awaitingClarify.set(ctx.from.id, { intentId: bestClarify.intentId, question: bestClarify.question });
       await ctx.reply(`🤔 Possible match — one detail first: ${bestClarify.question}`);
     }
+    await scanMultiDeals(); // form any group-buys / barter rings
   });
 
   async function rescan(intents: StoredIntent[]) {
@@ -328,8 +334,108 @@ export function createBot(token: string, store: Store): Bot {
     await bot.api.sendMessage(asker, "Good question — checking with them directly.");
   }
 
-  // Safety net: periodically surface dormant matches. Cached judges keep it cheap.
-  setInterval(() => { rescan(store.pool()).catch((e) => console.error("rescan error:", e)); }, 3 * 60_000);
+  // ── multilateral: group-buys and barter rings ──
+  async function scanMultiDeals() {
+    const active = store.pool().filter((s) => s.intent.active !== false);
+    const parties: Party[] = active.map((s) => ({ id: s.id, intent: s.intent }));
+    const userOf = new Map(active.map((s) => [s.id, s.userId]));
+
+    for (const g of groupBuys(parties)) {
+      const recs = [g.offer, ...g.buyers].map((p) => ({ userId: userOf.get(p.id)!, intentId: p.id }));
+      const uids = recs.map((r) => r.userId);
+      if (new Set(uids).size < 3) continue; // anchor + ≥2 distinct buyers
+      if (store.findMultiByParties("group", uids)) continue;
+      await proposeMulti(store.addMultiDeal("group", g.offer.intent.domain, recs, g.qty));
+    }
+    for (const r of barterCycles(parties)) {
+      if (r.members.length < 3) continue; // 2-cycles are pairwise swaps
+      const recs = r.members.map((p) => ({ userId: userOf.get(p.id)!, intentId: p.id }));
+      const uids = recs.map((rr) => rr.userId);
+      if (new Set(uids).size < r.members.length) continue;
+      if (store.findMultiByParties("ring", uids)) continue;
+      await proposeMulti(store.addMultiDeal("ring", "swap", recs, 1));
+    }
+  }
+
+  function describeFor(deal: MultiDeal, userId: number): string {
+    if (deal.mode === "ring") {
+      const me = store.intent(deal.parties.find((p) => p.userId === userId)!.intentId)?.intent;
+      return `You give ${(me?.have ?? []).join("+")} and receive ${(me?.want ?? []).join("+")}.`;
+    }
+    const anchorIntent = store.intent(deal.parties[0]!.intentId)?.intent;
+    const item = anchorIntent ? itemName(anchorIntent) : "the item";
+    const buyers = deal.parties.length - 1;
+    return userId === deal.parties[0]!.userId
+      ? `${buyers} people want your ${item} — settle as a batch?`
+      : `A group buy is forming for ${item} (${buyers} buyers).`;
+  }
+
+  async function proposeMulti(deal: MultiDeal) {
+    const kb = new InlineKeyboard().text("Approve", `g:${deal.id}:approve`).text("Pass", `g:${deal.id}:pass`);
+    const head = deal.mode === "ring" ? `🔄 ${deal.parties.length}-way barter ring` : "🛒 Group buy forming";
+    for (const p of deal.parties) {
+      if (isSim(p.userId)) { if (!deal.approvals.includes(p.userId)) deal.approvals.push(p.userId); continue; }
+      await bot.api.sendMessage(p.userId, `${head}\n${describeFor(deal, p.userId)}\nApprove?`, { reply_markup: kb });
+    }
+    store.persist();
+    await maybeSettle(deal);
+  }
+
+  async function handleMultiVote(ctx: Context, dealId: string | undefined, decision: string | undefined) {
+    const deal = dealId ? store.multiDeal(dealId) : undefined;
+    if (!deal || deal.status !== "proposed") return void ctx.answerCallbackQuery("This deal is closed.");
+    const uid = ctx.from!.id;
+    if (!deal.parties.some((p) => p.userId === uid)) return void ctx.answerCallbackQuery();
+    if (decision === "pass") { if (!deal.declines.includes(uid)) deal.declines.push(uid); }
+    else if (!deal.approvals.includes(uid)) deal.approvals.push(uid);
+    store.persist();
+    await ctx.editMessageText(decision === "pass" ? "Passed." : "👍 Approved — waiting for the others…");
+    await ctx.answerCallbackQuery();
+    await maybeSettle(deal);
+  }
+
+  async function maybeSettle(deal: MultiDeal) {
+    if (deal.status !== "proposed") return;
+    const responded = new Set([...deal.approvals, ...deal.declines]);
+    if (deal.parties.some((p) => !responded.has(p.userId))) return; // wait for everyone
+
+    if (deal.mode === "ring") {
+      if (deal.parties.every((p) => deal.approvals.includes(p.userId))) await settleRing(deal);
+      else deal.status = "failed", store.persist();
+      return;
+    }
+    const anchor = deal.parties[0]!;
+    const buyers = deal.parties.slice(1).filter((p) => deal.approvals.includes(p.userId)).slice(0, deal.qty);
+    if (deal.approvals.includes(anchor.userId) && buyers.length >= 1) await settleGroup(deal, anchor, buyers);
+    else deal.status = "failed", store.persist();
+  }
+
+  async function settleRing(deal: MultiDeal) {
+    deal.status = "settled"; store.persist();
+    const n = deal.parties.length;
+    for (let k = 0; k < n; k++) {
+      const me = deal.parties[k]!;
+      const giver = deal.parties[(k + 1) % n]!; // I receive what I want from the next
+      const receiver = deal.parties[(k - 1 + n) % n]!; // I give what I have to the previous
+      const mi = store.intent(me.intentId)?.intent;
+      await notify(me.userId, `🎉 Ring settled! Give ${(mi?.have ?? []).join("+")} to ${userLabel(store.user(receiver.userId))}, receive ${(mi?.want ?? []).join("+")} from ${userLabel(store.user(giver.userId))}.`);
+    }
+  }
+
+  async function settleGroup(deal: MultiDeal, anchor: { userId: number }, buyers: { userId: number }[]) {
+    deal.status = "settled"; store.persist();
+    const item = (() => { const ai = store.intent(deal.parties[0]!.intentId)?.intent; return ai ? itemName(ai) : "your item"; })();
+    await notify(anchor.userId, `🎉 Group deal! Selling your ${item} to: ${buyers.map((b) => userLabel(store.user(b.userId))).join(", ")}.`);
+    for (const b of buyers) {
+      const others = buyers.length - 1;
+      await notify(b.userId, `🎉 You're in the group buy with ${userLabel(store.user(anchor.userId))} for ${item}${others ? ` (+${others} other buyer${others > 1 ? "s" : ""})` : ""}.`);
+    }
+  }
+
+  // Safety net: periodically surface dormant matches + form group/ring deals.
+  setInterval(() => {
+    rescan(store.pool()).then(() => scanMultiDeals()).catch((e) => console.error("scan error:", e));
+  }, 3 * 60_000);
 
   bot.catch((err) => console.error("bot error:", err.error));
   return bot;

@@ -8,6 +8,7 @@ export const DistilledIntent = z.object({
   tags: z.array(z.string()),
   publicTags: z.array(z.string()),
   region: z.string(),
+  qty: z.number(),
   valuation: z.number().nullable(),
   have: z.array(z.string()),
   want: z.array(z.string()),
@@ -80,6 +81,7 @@ const INTENT_ITEM = {
     tags: { type: "array", items: { type: "string" } },
     publicTags: { type: "array", items: { type: "string" } },
     region: { type: "string", description: 'Coarse geo like "FR", "FR-75", or "*"' },
+    qty: { type: "number", description: "Number of units. 1 unless a count is stated ('selling 10 t-shirts' → 10, 'I want 3' → 3)." },
     valuation: { type: ["number", "null"] },
     have: { type: "array", items: { type: "string" } },
     want: { type: "array", items: { type: "string" } },
@@ -87,7 +89,7 @@ const INTENT_ITEM = {
     active: { type: "boolean" },
     rationale: { type: "string" },
   },
-  required: ["kind", "domain", "tags", "publicTags", "region", "valuation", "have", "want", "confidence", "active", "rationale"],
+  required: ["kind", "domain", "tags", "publicTags", "region", "qty", "valuation", "have", "want", "confidence", "active", "rationale"],
 };
 
 export const EMIT_INTENTS_TOOL: Anthropic.Tool = {

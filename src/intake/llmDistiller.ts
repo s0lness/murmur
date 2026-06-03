@@ -126,6 +126,7 @@ function toIntent(d: DistilledIntent, id: string, source: string): PrivateIntent
     tags: d.tags,
     publicTags: d.publicTags,
     region: d.region,
+    qty: d.qty,
     valuation: d.valuation ?? undefined,
     have: d.have.length ? d.have : undefined,
     want: d.want.length ? d.want : undefined,

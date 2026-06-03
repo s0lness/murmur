@@ -20,7 +20,23 @@ export interface Match {
  *  intent re-statement, so we never re-suggest them for it. */
 interface Dismissal { a: number; b: number; domain: string }
 
-interface Data { users: User[]; intents: StoredIntent[]; matches: Match[]; dismissals: Dismissal[]; seq: number }
+/** A multi-party deal: a group-buy (anchor + buyers) or a barter ring (ordered). */
+export interface DealParty { userId: number; intentId: string }
+export interface MultiDeal {
+  id: string;
+  mode: "group" | "ring";
+  domain: string;
+  parties: DealParty[]; // group: parties[0] = anchor (seller); ring: ordered members
+  qty: number;
+  approvals: number[];
+  declines: number[];
+  status: "proposed" | "settled" | "failed";
+}
+
+interface Data {
+  users: User[]; intents: StoredIntent[]; matches: Match[];
+  dismissals: Dismissal[]; multiDeals: MultiDeal[]; seq: number;
+}
 
 /** Tiny JSON-file store — the whole `murmur.db.json`. No native deps; fine at
  *  friends-group scale, survives restarts. */
@@ -32,8 +48,9 @@ export class Store {
     this.path = join(process.cwd(), file);
     this.data = existsSync(this.path)
       ? (JSON.parse(readFileSync(this.path, "utf8")) as Data)
-      : { users: [], intents: [], matches: [], dismissals: [], seq: 1 };
+      : { users: [], intents: [], matches: [], dismissals: [], multiDeals: [], seq: 1 };
     this.data.dismissals ??= []; // back-compat for older db files
+    this.data.multiDeals ??= [];
   }
   private save() { writeFileSync(this.path, JSON.stringify(this.data, null, 2)); }
 
@@ -96,6 +113,22 @@ export class Store {
   isDismissed(u1: number, u2: number, domain: string): boolean {
     const [a, b] = u1 < u2 ? [u1, u2] : [u2, u1];
     return this.data.dismissals.some((d) => d.a === a && d.b === b && d.domain === domain);
+  }
+
+  // ── multi-party deals ──
+  addMultiDeal(mode: "group" | "ring", domain: string, parties: DealParty[], qty: number): MultiDeal {
+    const d: MultiDeal = { id: `g${this.data.seq++}`, mode, domain, parties, qty, approvals: [], declines: [], status: "proposed" };
+    this.data.multiDeals.push(d);
+    this.save();
+    return d;
+  }
+  multiDeal(id: string) { return this.data.multiDeals.find((d) => d.id === id); }
+  /** Dedup key: same mode + same set of people. */
+  findMultiByParties(mode: "group" | "ring", userIds: number[]): MultiDeal | undefined {
+    const key = [...userIds].sort((a, b) => a - b).join(",");
+    return this.data.multiDeals.find(
+      (d) => d.mode === mode && [...d.parties.map((p) => p.userId)].sort((a, b) => a - b).join(",") === key,
+    );
   }
   persist() { this.save(); }
 
