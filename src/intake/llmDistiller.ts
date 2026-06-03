@@ -128,6 +128,8 @@ function toIntent(d: DistilledIntent, id: string, source: string): PrivateIntent
     region: d.region,
     qty: d.qty,
     valuation: d.valuation ?? undefined,
+    fallback: d.fallback ?? undefined,
+    substitutes: d.substitutes.length ? d.substitutes : undefined,
     have: d.have.length ? d.have : undefined,
     want: d.want.length ? d.want : undefined,
     source,

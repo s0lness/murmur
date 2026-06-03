@@ -10,6 +10,8 @@ export const DistilledIntent = z.object({
   region: z.string(),
   qty: z.number(),
   valuation: z.number().nullable(),
+  fallback: z.number().nullable(),
+  substitutes: z.array(z.string()),
   have: z.array(z.string()),
   want: z.array(z.string()),
   confidence: z.number(),
@@ -83,13 +85,15 @@ const INTENT_ITEM = {
     region: { type: "string", description: 'Coarse geo like "FR", "FR-75", or "*"' },
     qty: { type: "number", description: "Number of units. 1 unless a count is stated ('selling 10 t-shirts' → 10, 'I want 3' → 3)." },
     valuation: { type: ["number", "null"] },
+    fallback: { type: ["number", "null"], description: "Their alternative/best-known price elsewhere (e.g. the going eBay price), if known; else null. Used so a deal must beat their fallback." },
+    substitutes: { type: "array", items: { type: "string" }, description: "Other things they'd also accept ('a Vita or a Miyoo'); empty if none." },
     have: { type: "array", items: { type: "string" } },
     want: { type: "array", items: { type: "string" } },
     confidence: { type: "number" },
     active: { type: "boolean" },
     rationale: { type: "string" },
   },
-  required: ["kind", "domain", "tags", "publicTags", "region", "qty", "valuation", "have", "want", "confidence", "active", "rationale"],
+  required: ["kind", "domain", "tags", "publicTags", "region", "qty", "valuation", "fallback", "substitutes", "have", "want", "confidence", "active", "rationale"],
 };
 
 export const EMIT_INTENTS_TOOL: Anthropic.Tool = {

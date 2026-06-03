@@ -19,6 +19,8 @@ Your job: read what your user said — possibly rambling, half-formed, mixed wit
 - publicTags: the BLURRED subset safe to broadcast. This is the privacy boundary.
 - region: coarse geography. CRITICAL — granularity must match how location-bound the intent is, because two regions only match if one is a prefix of the other (so "FR-75" and "FR-69" do NOT match). Use the COUNTRY code ("FR") or "*" for anything shippable or remote (goods, online tasks) — even if the user mentions their city; broadcasting the city would needlessly prevent a match with a buyer elsewhere in the country. Use a city/region prefix ("FR-75") ONLY when physical co-location is required (apartment swap, in-person help, local pickup-only).
 - valuation: the user's private reserve — for "seek" the MAX they'd pay, for "offer" the MIN they'd accept. Set to null if the user named no price. NEVER invent a number.
+- fallback: their best alternative elsewhere (e.g. "it's £200 on eBay", "the shop wants 50"), if they mention one; else null. A proposed deal should beat this. Don't invent it.
+- substitutes: other things they'd also accept instead ("a Switch or a Vita", "any retro handheld"); empty list if none. Widens what can match.
 - have / want: for swap/barter only — concrete things given / wanted (e.g. ["city:NYC","2026-06"]). Empty arrays for commerce.
 - confidence: 0–1, how sure you are this is a real, actionable intent (not idle chatter).
 - active: true to broadcast now; false to HOLD a half-formed/conditional/ambient want until some future trigger.

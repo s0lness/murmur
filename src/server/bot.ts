@@ -42,6 +42,38 @@ export function createBot(token: string, store: Store): Bot {
     await bot.api.sendMessage(uid, text, extra);
   };
 
+  // ── digest: batch match/deal proposals into one message per short window ──
+  interface Pending { text: string; buttons: { label: string; data: string }[] }
+  const pendingDigest = new Map<number, Pending[]>();
+  const digestTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  const DIGEST_MS = 8000;
+
+  function enqueue(uid: number, p: Pending) {
+    if (isSim(uid)) return;
+    const q = pendingDigest.get(uid) ?? [];
+    q.push(p);
+    pendingDigest.set(uid, q);
+    if (!digestTimers.has(uid)) digestTimers.set(uid, setTimeout(() => void flushDigest(uid), DIGEST_MS));
+  }
+
+  async function flushDigest(uid: number) {
+    digestTimers.delete(uid);
+    const q = pendingDigest.get(uid) ?? [];
+    pendingDigest.delete(uid);
+    if (q.length === 0) return;
+    if (q.length === 1) {
+      const p = q[0]!;
+      const kb = new InlineKeyboard();
+      for (const b of p.buttons) kb.text(b.label, b.data);
+      await bot.api.sendMessage(uid, p.text, { reply_markup: kb });
+      return;
+    }
+    const lines = q.map((p, i) => `${i + 1}. ${p.text}`).join("\n");
+    const kb = new InlineKeyboard();
+    q.forEach((p, i) => { for (const b of p.buttons) kb.text(`${i + 1} ${b.label}`, b.data); kb.row(); });
+    await bot.api.sendMessage(uid, `🔔 ${q.length} new:\n${lines}`, { reply_markup: kb });
+  }
+
   bot.command("start", (ctx) => { if (ctx.from) remember(ctx.from); return ctx.reply(WELCOME, { parse_mode: "Markdown" }); });
   bot.command("help", (ctx) => ctx.reply(WELCOME, { parse_mode: "Markdown" }));
   bot.command("me", (ctx) => {
@@ -241,9 +273,9 @@ export function createBot(token: string, store: Store): Bot {
     if (isSim(m.aUser)) m.aConsent = true; // sim auto-connects
     if (isSim(m.bUser)) m.bConsent = true;
     store.persist();
-    const kb = (id: string) => new InlineKeyboard().text("Connect", `c:${id}:yes`).text("Pass", `c:${id}:no`);
-    await notify(m.aUser, `🎯 Match — ${blurb(b.intent)}. Connect?`, { reply_markup: kb(m.id) });
-    await notify(m.bUser, `🎯 Match — ${blurb(a.intent)}. Connect?`, { reply_markup: kb(m.id) });
+    const connectBtns = (id: string) => [{ label: "Connect", data: `c:${id}:yes` }, { label: "Pass", data: `c:${id}:no` }];
+    enqueue(m.aUser, { text: `🎯 Match — ${blurb(b.intent)}`, buttons: connectBtns(m.id) });
+    enqueue(m.bUser, { text: `🎯 Match — ${blurb(a.intent)}`, buttons: connectBtns(m.id) });
     if (m.aConsent && m.bConsent && m.status === "proposed") await negotiate(m);
   }
 
@@ -371,11 +403,11 @@ export function createBot(token: string, store: Store): Bot {
   }
 
   async function proposeMulti(deal: MultiDeal) {
-    const kb = new InlineKeyboard().text("Approve", `g:${deal.id}:approve`).text("Pass", `g:${deal.id}:pass`);
     const head = deal.mode === "ring" ? `🔄 ${deal.parties.length}-way barter ring` : "🛒 Group buy forming";
+    const approveBtns = [{ label: "Approve", data: `g:${deal.id}:approve` }, { label: "Pass", data: `g:${deal.id}:pass` }];
     for (const p of deal.parties) {
       if (isSim(p.userId)) { if (!deal.approvals.includes(p.userId)) deal.approvals.push(p.userId); continue; }
-      await bot.api.sendMessage(p.userId, `${head}\n${describeFor(deal, p.userId)}\nApprove?`, { reply_markup: kb });
+      enqueue(p.userId, { text: `${head} — ${describeFor(deal, p.userId)}`, buttons: approveBtns });
     }
     store.persist();
     await maybeSettle(deal);

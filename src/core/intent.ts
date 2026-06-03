@@ -32,8 +32,13 @@ export interface PrivateIntent {
   region: string;
   window?: Window;
   trustGate?: number;
-  /** Commerce: buyer = max willing to pay; seller = min acceptable. */
+  /** Commerce: buyer = max willing to pay; seller = min acceptable (reservation). */
   valuation?: number;
+  /** The user's best alternative elsewhere (e.g. marketplace price) — a deal must
+   *  beat this (individual rationality). */
+  fallback?: number;
+  /** Other things they'd also accept ("a Vita or a Miyoo") — widens the solution space. */
+  substitutes?: string[];
   /** How many units (for bulk / group settlement). Defaults to 1. */
   qty?: number;
   /** Barter/swap: what I can give / what I want in return. */
