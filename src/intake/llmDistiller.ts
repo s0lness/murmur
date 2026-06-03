@@ -1,11 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { PrivateIntent } from "../core/intent";
+import { modelId } from "../core/model";
 import { cached, cacheKey } from "./cache";
 import type { Distiller, PersonaUtterances } from "./distiller";
 import { SYSTEM_PROMPT, SYSTEM_PROMPT_ANSWER, SYSTEM_PROMPT_RECONCILE, SYSTEM_PROMPT_ROUTER } from "./prompt";
 import { ANSWER_TOOL, AnswerOutput, DistillerOutput, type DistilledIntent, EMIT_INTENTS_TOOL, RECONCILE_TOOL, ReconcileOutput, ROUTE_TOOL, RouteOutput } from "./schema";
-
-const MODEL = "claude-opus-4-8";
 
 /**
  * Distills natural-language utterances into structured PrivateIntents via a
@@ -33,10 +32,10 @@ export class LLMDistiller implements Distiller {
     const userText = input.utterances.map((u) => `- ${u}`).join("\n");
 
     // Disk-cached so the same words always distill the same way (reproducibility).
-    const key = cacheKey("distill-v2", this.cacheTag, MODEL, this.system, input.persona, input.utterances);
+    const key = cacheKey("distill-v2", this.cacheTag, modelId(), this.system, input.persona, input.utterances);
     const { value: intents } = await cached<DistilledIntent[]>(key, async () => {
       const response = await this.client().messages.create({
-        model: MODEL,
+        model: modelId(),
         max_tokens: 4096,
         system: [
           // cache_control on the last (only) system block → caches tools + system.
@@ -60,7 +59,7 @@ export class LLMDistiller implements Distiller {
   /** Counterpart agent: answer the question on the user's behalf, or escalate. */
   async answer(question: string, userContext: string): Promise<AnswerOutput> {
     const response = await this.client().messages.create({
-      model: MODEL,
+      model: modelId(),
       max_tokens: 512,
       system: [{ type: "text", text: SYSTEM_PROMPT_ANSWER, cache_control: { type: "ephemeral" } }],
       tools: [ANSWER_TOOL],
@@ -75,7 +74,7 @@ export class LLMDistiller implements Distiller {
   /** Triage a message: a portfolio update, or a question to relay to a match. */
   async route(message: string, matchSummary: string): Promise<RouteOutput> {
     const response = await this.client().messages.create({
-      model: MODEL,
+      model: modelId(),
       max_tokens: 512,
       system: [{ type: "text", text: SYSTEM_PROMPT_ROUTER, cache_control: { type: "ephemeral" } }],
       tools: [ROUTE_TOOL],
@@ -98,7 +97,7 @@ export class LLMDistiller implements Distiller {
     utterance: string,
   ): Promise<{ removeIds: string[]; updates: { id: string; valuation: number | null; active: boolean }[]; adds: PrivateIntent[] }> {
     const response = await this.client().messages.create({
-      model: MODEL,
+      model: modelId(),
       max_tokens: 4096,
       system: [{ type: "text", text: SYSTEM_PROMPT_RECONCILE, cache_control: { type: "ephemeral" } }],
       tools: [RECONCILE_TOOL],

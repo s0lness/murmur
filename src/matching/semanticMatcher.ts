@@ -1,8 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { blur, type PrivateIntent } from "../core/intent";
+import { modelId } from "../core/model";
 import { cached, cacheKey } from "../intake/cache";
-
-const MODEL = "claude-opus-4-8";
 
 /** One verdict per candidate signal. */
 export interface Verdict {
@@ -94,10 +93,10 @@ export class SemanticMatcher {
       want: seeker.want ?? [],
     };
 
-    const key = cacheKey("match-v2", MODEL, SYSTEM, myWant, signals);
+    const key = cacheKey("match-v2", modelId(), SYSTEM, myWant, signals);
     const { value } = await cached<Verdict[]>(key, async () => {
       const response = await this.client().messages.create({
-        model: MODEL,
+        model: modelId(),
         max_tokens: 2048,
         system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
         tools: [JUDGE_TOOL],
