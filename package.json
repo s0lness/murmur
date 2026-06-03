@@ -16,12 +16,14 @@
     "lab": "tsx src/rooms/lab-record.ts",
     "charter-sim": "tsx src/sim/charter-sim.ts",
     "pipeline": "tsx src/sim/pipeline-record.ts",
+    "server": "tsx src/server/index.ts",
     "view": "node viewer/serve.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
+    "grammy": "^1.43.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
