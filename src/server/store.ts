@@ -79,6 +79,21 @@ export class Store {
   }
   persist() { this.save(); }
 
+  /** Read-only view for the host dashboard. */
+  snapshot() { return { users: this.data.users, intents: this.data.intents, matches: this.data.matches }; }
+
+  /** Drop intents older than ttlMs (and their matches) so stale wants don't linger. */
+  purgeExpired(ttlMs: number): number {
+    const cutoff = Date.now() - ttlMs;
+    const before = this.data.intents.length;
+    const keep = new Set(this.data.intents.filter((i) => i.createdAt >= cutoff).map((i) => i.id));
+    this.data.intents = this.data.intents.filter((i) => keep.has(i.id));
+    this.data.matches = this.data.matches.filter((m) => keep.has(m.aIntent) && keep.has(m.bIntent));
+    const dropped = before - this.data.intents.length;
+    if (dropped > 0) this.save();
+    return dropped;
+  }
+
   /** Drop synthetic /simulate users (negative ids) — called at startup so each
    *  run begins clean of test counterparts. */
   purgeSims() {

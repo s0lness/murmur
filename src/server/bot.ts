@@ -21,10 +21,8 @@ const blurb = (i: PrivateIntent) => {
 const itemName = (i: PrivateIntent) => (i.publicTags ?? i.tags).slice(0, 3).join(" ");
 const userLabel = (u?: User) => (u?.handle ? `@${u.handle}` : u?.name ?? "your match");
 
-export function createBot(token: string): Bot {
+export function createBot(token: string, store: Store): Bot {
   const bot = new Bot(token);
-  const store = new Store();
-  store.purgeSims();
   const distiller = new LLMDistiller();
   const awaitingRevision = new Map<number, string>(); // userId -> matchId (transient)
   const awaitingClarify = new Map<number, { intentId: string; question: string }>();
@@ -49,6 +47,20 @@ export function createBot(token: string): Bot {
     return ctx.reply(list.length ? list.map((s) => "• " + fmt(s.intent)).join("\n") : "No wants yet — just tell me one.");
   });
   bot.command("clear", (ctx) => { if (!ctx.from) return; store.clearUser(ctx.from.id); return ctx.reply("Cleared your wants."); });
+  bot.command("status", (ctx) => {
+    if (!ctx.from) return;
+    const mine = store.intentsOf(ctx.from.id).filter((s) => s.intent.active !== false);
+    const snap = store.snapshot();
+    const realIntents = snap.intents.filter((i) => i.userId >= 0);
+    const people = new Set(realIntents.map((i) => i.userId)).size;
+    const myMatches = snap.matches.filter((m) => m.aUser === ctx.from!.id || m.bUser === ctx.from!.id);
+    const deals = myMatches.filter((m) => m.status === "connected").length;
+    return ctx.reply(
+      `Your live wants (${mine.length}):\n${mine.map((s) => "• " + fmt(s.intent)).join("\n") || "—"}\n\n` +
+        `Pool: ${realIntents.length} wants from ${people} ${people === 1 ? "person" : "people"}.\n` +
+        `Your matches: ${myMatches.length}${deals ? ` (${deals} deal${deals === 1 ? "" : "s"})` : ""}.`,
+    );
+  });
   bot.command("rematch", async (ctx) => {
     if (!ctx.from) return;
     await ctx.reply("Rescanning the pool for matches…");

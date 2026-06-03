@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>murmur — host dashboard</title>
+<style>
+  :root { --bg:#0e1116; --panel:#161b22; --panel2:#1c232c; --line:#2d333b; --text:#c9d1d9; --muted:#8b949e; --green:#3fb950; --amber:#d29922; --red:#f85149; --blue:#58a6ff; --purple:#bc8cff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif; }
+  .mono { font-family:ui-monospace,Consolas,monospace; }
+  header { display:flex; align-items:center; gap:14px; padding:12px 20px; border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; }
+  header h1 { margin:0; font-size:15px; } header h1 .dot { color:var(--purple); }
+  header .stat { color:var(--muted); font-size:12px; } header .stat b { color:var(--text); }
+  header .live { margin-left:auto; color:var(--green); font-size:12px; }
+  main { display:grid; grid-template-columns:1fr 1fr; }
+  .col { padding:16px 20px; } .col + .col { border-left:1px solid var(--line); }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin:0 0 12px; }
+  .agent { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:8px; }
+  .agent .who { font-weight:600; font-size:13px; } .agent .who .h { color:var(--muted); font-weight:400; }
+  .sig { font-size:12px; margin-top:6px; padding-top:6px; border-top:1px dashed var(--line); }
+  .k-seek{color:var(--blue);} .k-offer{color:var(--green);} .k-swap,.k-barter{color:var(--purple);}
+  .tag { display:inline-block; background:var(--panel2); border:1px solid var(--line); border-radius:4px; padding:0 5px; margin:1px 2px 0 0; font-size:11px; color:var(--muted); }
+  .age { float:right; color:var(--muted); font-size:11px; }
+  .val { color:var(--amber); font-size:11px; }
+  .held { color:var(--amber); font-size:11px; }
+  .match { padding:8px 10px; border-left:2px solid var(--line); margin-bottom:6px; background:var(--panel); border-radius:0 6px 6px 0; font-size:13px; }
+  .match.connected { border-left-color:var(--green); } .match.negotiating { border-left-color:var(--amber); } .match.passed { border-left-color:var(--red); opacity:.6; } .match.proposed { border-left-color:var(--blue); }
+  .badge { float:right; font-size:11px; }
+  .b-connected{color:var(--green);} .b-negotiating{color:var(--amber);} .b-passed{color:var(--red);} .b-proposed{color:var(--blue);}
+  .empty { color:var(--muted); padding:20px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="dot">●</span> murmur — host</h1>
+  <span class="stat" id="stat"></span>
+  <span class="live" id="live">● live</span>
+</header>
+<main>
+  <div class="col"><h2>pool — wants in the air</h2><div id="agents"></div></div>
+  <div class="col"><h2>matches & deals</h2><div id="matches"></div></div>
+</main>
+<script>
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]));
+const ago = (t) => { const s = (Date.now() - t) / 1000; if (s < 90) return Math.round(s) + "s"; if (s < 5400) return Math.round(s/60) + "m"; if (s < 86400*1.5) return Math.round(s/3600) + "h"; return Math.round(s/86400) + "d"; };
+
+async function tick() {
+  let data;
+  try { data = await (await fetch("/api/state?" + Date.now())).json(); document.getElementById("live").style.color = "var(--green)"; }
+  catch { document.getElementById("live").style.color = "var(--red)"; return; }
+  render(data);
+}
+
+function render(d) {
+  const userById = Object.fromEntries(d.users.map(u => [u.id, u]));
+  const real = d.intents.filter(i => i.userId >= 0);
+  const people = new Set(real.map(i => i.userId)).size;
+  const deals = d.matches.filter(m => m.status === "connected").length;
+  document.getElementById("stat").innerHTML =
+    `<b>${people}</b> people · <b>${real.length}</b> wants · <b>${d.matches.length}</b> matches · <b style="color:var(--green)">${deals}</b> deals`;
+
+  // group intents by user
+  const byUser = {};
+  for (const si of d.intents) (byUser[si.userId] ??= []).push(si);
+  const agents = Object.entries(byUser).map(([uid, list]) => {
+    const u = userById[uid];
+    const sigs = list.map(si => {
+      const i = si.intent;
+      const tags = (i.publicTags ?? i.tags).map(t => `<span class="tag">${esc(t)}</span>`).join("");
+      const val = i.valuation != null ? `<span class="val"> · €${i.valuation}</span>` : "";
+      const held = i.active === false ? ` <span class="held">⏸ held</span>` : "";
+      return `<div class="sig"><span class="age">${ago(si.createdAt)}</span>
+        <span class="k-${i.kind} mono">${i.kind.toUpperCase()}</span>
+        <span class="mono" style="color:var(--muted)"> ${esc(i.domain)}</span>${val}${held}<br>${tags}</div>`;
+    }).join("");
+    const sim = Number(uid) < 0;
+    return `<div class="agent"><div class="who">${esc(u?.name ?? uid)} ${u?.handle ? `<span class="h">@${esc(u.handle)}</span>` : ""}${sim ? ' <span class="held">sim</span>' : ""}</div>${sigs}</div>`;
+  }).join("") || `<div class="empty">no wants yet</div>`;
+  document.getElementById("agents").innerHTML = agents;
+
+  const matches = d.matches.slice().reverse().map(m => {
+    const a = userById[m.aUser], b = userById[m.bUser];
+    const label = (u, id) => esc(u?.name ?? (Number(id) < 0 ? "Simulated" : id));
+    const price = m.price != null ? ` @ €${m.price}` : "";
+    return `<div class="match ${m.status}"><span class="badge b-${m.status}">${m.status}${price}</span>
+      <b>${label(a, m.aUser)}</b> ⇄ <b>${label(b, m.bUser)}</b></div>`;
+  }).join("") || `<div class="empty">no matches yet</div>`;
+  document.getElementById("matches").innerHTML = matches;
+}
+
+tick();
+setInterval(tick, 3000);
+</script>
+</body>
+</html>
