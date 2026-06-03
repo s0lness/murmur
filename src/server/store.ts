@@ -95,6 +95,14 @@ export class Store {
     return dropped;
   }
 
+  /** Drop matches that reference an intent that no longer exists. */
+  purgeOrphanMatches() {
+    const ids = new Set(this.data.intents.map((i) => i.id));
+    const before = this.data.matches.length;
+    this.data.matches = this.data.matches.filter((m) => ids.has(m.aIntent) && ids.has(m.bIntent));
+    if (this.data.matches.length !== before) this.save();
+  }
+
   /** Drop synthetic /simulate users (negative ids) — called at startup so each
    *  run begins clean of test counterparts. */
   purgeSims() {

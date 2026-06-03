@@ -18,6 +18,7 @@ const TTL_MS = 7 * 24 * 60 * 60 * 1000; // wants expire after 7 days
 
 const store = new Store();
 store.purgeSims();
+store.purgeOrphanMatches();
 store.purgeExpired(TTL_MS);
 setInterval(() => store.purgeExpired(TTL_MS), 60 * 60 * 1000); // hourly housekeeping
 

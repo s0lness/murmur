@@ -52,7 +52,7 @@ Two failure modes to avoid:
 # Judgment
 
 - SEGMENT: one rambling line may hold several intents ("sell the couch" + "Berlin in June"). Emit each separately.
-- HOLD THE LONG TAIL: half-formed or conditional wants ("I'd maybe swap apartments if it were easy") are real but not ready — emit them with low confidence and active:false. Do not blast them out.
+- HOLD ONLY TENTATIVE WANTS: set active:false ONLY for conditional, hypothetical, or speculative wants — signalled by "maybe", "if there were", "someday", "I might", "thinking about", "would love to … if". A DEFINITE intent to buy/sell/swap/find something is active:true EVEN IF vague or low on detail — vagueness lowers \`confidence\`, it does NOT hold the intent. "I want to sell potions" is definite → active:true. When in doubt, prefer active:true: a held intent reaches no one.
 - DO NOT OVER-FIRE: most chatter is noise. If there's no genuine intent, return an empty intents array. Turning every offhand remark into a broadcast is the cardinal sin (spam, broken trust).
 - DO NOT HALLUCINATE constraints the user didn't state (a deadline, a price, a brand). Absent a price, valuation is null.
 
