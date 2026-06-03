@@ -60,9 +60,14 @@ A real match also needs the complementary side (a seeker wants what an offer pro
  * anyone else's private fields). Disk-cached for reproducibility.
  */
 export class SemanticMatcher {
-  private client: Anthropic;
+  private _client?: Anthropic;
   constructor(client?: Anthropic) {
-    this.client = client ?? new Anthropic();
+    this._client = client;
+  }
+  // Lazy: build the client on first use, after env (.env) is loaded — so a
+  // module-level `new SemanticMatcher()` can't capture a missing API key.
+  private client(): Anthropic {
+    return (this._client ??= new Anthropic());
   }
 
   async judge(seeker: PrivateIntent, candidates: PrivateIntent[]): Promise<Verdict[]> {
@@ -85,7 +90,7 @@ export class SemanticMatcher {
 
     const key = cacheKey("match-v2", MODEL, SYSTEM, myWant, signals);
     const { value } = await cached<Verdict[]>(key, async () => {
-      const response = await this.client.messages.create({
+      const response = await this.client().messages.create({
         model: MODEL,
         max_tokens: 2048,
         system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],

@@ -14,15 +14,19 @@ const MODEL = "claude-opus-4-8";
  * per-agent utterance varies, so it lands after the cache breakpoint.
  */
 export class LLMDistiller implements Distiller {
-  private client: Anthropic;
+  private _client?: Anthropic;
   private system: string;
   private cacheTag: string;
 
   constructor(opts: { client?: Anthropic; system?: string; cacheTag?: string } = {}) {
     // Reads ANTHROPIC_API_KEY from the environment. Never hardcode the key.
-    this.client = opts.client ?? new Anthropic();
+    this._client = opts.client;
     this.system = opts.system ?? SYSTEM_PROMPT;
     this.cacheTag = opts.cacheTag ?? "normalized";
+  }
+  // Lazy: build after .env is loaded, so import order can't strand the key.
+  private client(): Anthropic {
+    return (this._client ??= new Anthropic());
   }
 
   async distill(input: PersonaUtterances): Promise<PrivateIntent[]> {
@@ -31,7 +35,7 @@ export class LLMDistiller implements Distiller {
     // Disk-cached so the same words always distill the same way (reproducibility).
     const key = cacheKey("distill-v2", this.cacheTag, MODEL, this.system, input.persona, input.utterances);
     const { value: intents } = await cached<DistilledIntent[]>(key, async () => {
-      const response = await this.client.messages.create({
+      const response = await this.client().messages.create({
         model: MODEL,
         max_tokens: 4096,
         system: [
