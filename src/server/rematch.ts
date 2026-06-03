@@ -13,8 +13,8 @@ console.log(`rematch over ${pool.length} intents…\n`);
 
 const seen = new Set<string>();
 for (const si of pool) {
-  const hits = await matchAgainstPool(si, pool);
-  for (const h of hits) {
+  const { matches } = await matchAgainstPool(si, pool);
+  for (const h of matches) {
     const key = [si.intent.id, h.intent.id].sort().join("~");
     if (seen.has(key)) continue;
     seen.add(key);

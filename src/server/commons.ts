@@ -29,23 +29,37 @@ function prefilter(fresh: StoredIntent, candidates: StoredIntent[]): StoredInten
     .map((x) => x.c);
 }
 
+export interface MatchResult {
+  matches: StoredIntent[];
+  /** Plausible-but-ambiguous candidates the agent could ask about. */
+  clarifications: { candidate: StoredIntent; question: string; score: number }[];
+}
+
 /**
  * Match a fresh intent against the live pool. Tiered: complement+active filter →
  * cheap structural prefilter → semantic LLM judge on the shortlist only. The
  * judge sees just the blurred side of each candidate, so peer privacy holds.
  */
-export async function matchAgainstPool(fresh: StoredIntent, pool: StoredIntent[]): Promise<StoredIntent[]> {
+export async function matchAgainstPool(fresh: StoredIntent, pool: StoredIntent[]): Promise<MatchResult> {
   const want = COMPLEMENT[fresh.intent.kind];
   const candidates = pool.filter(
     (p) => p.userId !== fresh.userId && p.intent.kind === want && p.intent.active !== false,
   );
-  if (candidates.length === 0) return [];
+  if (candidates.length === 0) return { matches: [], clarifications: [] };
 
   const shortlist = prefilter(fresh, candidates);
-  if (shortlist.length === 0) return [];
+  if (shortlist.length === 0) return { matches: [], clarifications: [] };
   console.log(`[match] ${fresh.intent.id}: pool ${candidates.length} → shortlist ${shortlist.length} → 1 judge call`);
 
   const verdicts = await matcher.judge(fresh.intent, shortlist.map((c) => c.intent));
-  const good = new Set(verdicts.filter((v) => v.relevant && v.score >= 0.6).map((v) => v.signalId));
-  return shortlist.filter((c) => good.has(c.intent.id));
+  const byId = new Map(shortlist.map((c) => [c.intent.id, c]));
+  const matches: StoredIntent[] = [];
+  const clarifications: MatchResult["clarifications"] = [];
+  for (const v of verdicts) {
+    const cand = byId.get(v.signalId);
+    if (!cand) continue;
+    if (v.relevant && v.score >= 0.6) matches.push(cand);
+    else if (!v.relevant && v.clarify && v.score >= 0.4) clarifications.push({ candidate: cand, question: v.clarify, score: v.score });
+  }
+  return { matches, clarifications };
 }

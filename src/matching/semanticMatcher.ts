@@ -10,6 +10,9 @@ export interface Verdict {
   relevant: boolean;
   score: number;
   reason: string;
+  /** If a single missing detail decides a plausible match, a question to ask
+   *  the user; "" otherwise. */
+  clarify: string;
 }
 
 const JUDGE_TOOL: Anthropic.Tool = {
@@ -30,8 +33,9 @@ const JUDGE_TOOL: Anthropic.Tool = {
             relevant: { type: "boolean" },
             score: { type: "number" },
             reason: { type: "string" },
+            clarify: { type: "string", description: "A short question if one detail decides a plausible match; else empty string." },
           },
-          required: ["signalId", "relevant", "score", "reason"],
+          required: ["signalId", "relevant", "score", "reason", "clarify"],
         },
       },
     },
@@ -52,7 +56,9 @@ But REJECT coincidental keyword overlap that isn't a real match:
 - "apple" the fruit is NOT an "Apple" laptop.
 - a couch for sale is NOT "couch-surfing" / a place to crash.
 
-A real match also needs the complementary side (a seeker wants what an offer provides) and a plausible region. Score 0–1; mark relevant=true only when you'd actually open a negotiation. Return a verdict for EVERY candidate.`;
+A real match also needs the complementary side (a seeker wants what an offer provides) and a plausible region. Score 0–1; mark relevant=true only when you'd actually open a negotiation. Return a verdict for EVERY candidate.
+
+CLARIFY: if a candidate is a plausible match but ONE missing detail decides it (e.g. "Switch" vs "Switch 2", a size, a date window, condition), set relevant=false, score in 0.4–0.6, and \`clarify\` to ONE short question whose answer would resolve it — phrased to ask YOUR user (e.g. "Do you mean the original Switch or the Switch 2?"). For confirmed matches and clear non-matches, leave \`clarify\` empty.`;
 
 /**
  * murmur's semantic matcher. The agent matches its OWN private want against the

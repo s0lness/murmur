@@ -27,6 +27,7 @@ export function createBot(token: string): Bot {
   store.purgeSims();
   const distiller = new LLMDistiller();
   const awaitingRevision = new Map<number, string>(); // userId -> matchId (transient)
+  const awaitingClarify = new Map<number, { intentId: string; question: string }>();
   let simSeq = -1; // synthetic /simulate users get negative ids
 
   const remember = (u: { id: number; username?: string; first_name?: string }) =>
@@ -131,6 +132,11 @@ export function createBot(token: string): Bot {
       return;
     }
 
+    // If they're answering a clarifying question, fold it into the message.
+    let utterance = ctx.message.text;
+    const clar = awaitingClarify.get(ctx.from.id);
+    if (clar) { awaitingClarify.delete(ctx.from.id); utterance = `(Answering "${clar.question}") ${ctx.message.text}`; }
+
     await ctx.replyWithChatAction("typing");
     // Reconcile against the user's standing portfolio: a message can remove
     // (corrections/cancellations), update (price), or add — not only add.
@@ -139,7 +145,7 @@ export function createBot(token: string): Bot {
       tags: s.intent.publicTags ?? s.intent.tags,
       valuation: s.intent.valuation ?? null, active: s.intent.active !== false,
     }));
-    const { removeIds, updates, adds } = await distiller.reconcile(existing, ctx.from.first_name ?? "a friend", ctx.message.text);
+    const { removeIds, updates, adds } = await distiller.reconcile(existing, ctx.from.first_name ?? "a friend", utterance);
 
     for (const id of removeIds) store.removeIntent(id);
     for (const u of updates) store.updateIntent(u.id, u.valuation ?? undefined, u.active);
@@ -152,14 +158,28 @@ export function createBot(token: string): Bot {
     if (lines.length === 0) return ctx.reply("Noted — nothing changed. Tell me something you want to buy, sell, swap, or find.");
     await ctx.reply(lines.join("\n\n") + "\n\nBroadcasting a blur. I'll ping you on a match.");
 
-    await rescan(added.filter((s) => s.intent.active !== false));
+    // Match the new intents; if nothing matched cleanly but a candidate is a
+    // plausible-but-ambiguous match, ask the user one clarifying question.
+    let matched = false;
+    let bestClarify: { intentId: string; question: string; score: number } | undefined;
+    for (const s of added.filter((x) => x.intent.active !== false)) {
+      const { matches, clarifications } = await matchAgainstPool(s, store.pool());
+      for (const hit of matches) { await propose(s, hit); matched = true; }
+      for (const c of clarifications) {
+        if (!bestClarify || c.score > bestClarify.score) bestClarify = { intentId: s.id, question: c.question, score: c.score };
+      }
+    }
+    if (!matched && bestClarify) {
+      awaitingClarify.set(ctx.from.id, { intentId: bestClarify.intentId, question: bestClarify.question });
+      await ctx.reply(`🤔 Possible match — one detail first: ${bestClarify.question}`);
+    }
   });
 
   async function rescan(intents: StoredIntent[]) {
     for (const s of intents) {
       if (s.intent.active === false) continue;
-      const hits = await matchAgainstPool(s, store.pool());
-      for (const hit of hits) await propose(s, hit);
+      const { matches } = await matchAgainstPool(s, store.pool());
+      for (const hit of matches) await propose(s, hit);
     }
   }
 
