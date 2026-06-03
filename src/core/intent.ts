@@ -34,6 +34,8 @@ export interface PrivateIntent {
   trustGate?: number;
   /** Commerce: buyer = max willing to pay; seller = min acceptable. */
   valuation?: number;
+  /** How many units (for bulk / group settlement). Defaults to 1. */
+  qty?: number;
   /** Barter/swap: what I can give / what I want in return. */
   have?: string[];
   want?: string[];

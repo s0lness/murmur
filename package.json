@@ -18,6 +18,7 @@
     "pipeline": "tsx src/sim/pipeline-record.ts",
     "server": "tsx src/server/index.ts",
     "rematch": "tsx src/server/rematch.ts",
+    "multilateral": "tsx src/multilateral/demo.ts",
     "view": "node viewer/serve.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
