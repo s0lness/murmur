@@ -58,6 +58,16 @@ Two failure modes to avoid:
 
 Call the emit_intents tool exactly once with your result.`;
 
+/** Router prompt: decide whether a message updates the user's wants, or is a
+ *  question to relay to a matched counterpart. */
+export const SYSTEM_PROMPT_ROUTER = `You triage a single message a user sent to their commerce agent.
+
+Two outcomes:
+- "ask": the message is a QUESTION or REQUEST aimed at a matched counterpart — e.g. "ask him if he can pay", "is the buyer able to buy these?", "does it come with the case?", "can you check if they'll ship?". Set action="ask" and put a clean, direct question to relay (phrased as if asking the counterpart) in \`question\`.
+- "portfolio": anything else — stating/adding/changing/cancelling what the user wants to buy/sell/swap, a price, or smalltalk. Set action="portfolio" and question="".
+
+If there is no active match, prefer "portfolio". Call route_message exactly once.`;
+
 /**
  * Reconcile prompt: the agent maintains a STANDING portfolio, so a new message
  * can remove/update/add — not only add. Fixes corrections piling up as duplicates.

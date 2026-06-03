@@ -2,8 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { PrivateIntent } from "../core/intent";
 import { cached, cacheKey } from "./cache";
 import type { Distiller, PersonaUtterances } from "./distiller";
-import { SYSTEM_PROMPT, SYSTEM_PROMPT_RECONCILE } from "./prompt";
-import { DistillerOutput, type DistilledIntent, EMIT_INTENTS_TOOL, RECONCILE_TOOL, ReconcileOutput } from "./schema";
+import { SYSTEM_PROMPT, SYSTEM_PROMPT_RECONCILE, SYSTEM_PROMPT_ROUTER } from "./prompt";
+import { DistillerOutput, type DistilledIntent, EMIT_INTENTS_TOOL, RECONCILE_TOOL, ReconcileOutput, ROUTE_TOOL, RouteOutput } from "./schema";
 
 const MODEL = "claude-opus-4-8";
 
@@ -55,6 +55,21 @@ export class LLMDistiller implements Distiller {
 
     const sourceText = input.utterances.join(" / ");
     return intents.map((d, i) => toIntent(d, `${input.agentId}-i${i}`, sourceText));
+  }
+
+  /** Triage a message: a portfolio update, or a question to relay to a match. */
+  async route(message: string, matchSummary: string): Promise<RouteOutput> {
+    const response = await this.client().messages.create({
+      model: MODEL,
+      max_tokens: 512,
+      system: [{ type: "text", text: SYSTEM_PROMPT_ROUTER, cache_control: { type: "ephemeral" } }],
+      tools: [ROUTE_TOOL],
+      tool_choice: { type: "tool", name: ROUTE_TOOL.name },
+      messages: [{ role: "user", content: `Active match: ${matchSummary}\n\nMessage: "${message}"` }],
+    });
+    const block = response.content.find((b) => b.type === "tool_use");
+    if (!block || block.type !== "tool_use") throw new Error("route: no tool call");
+    return RouteOutput.parse(block.input);
   }
 
   /**

@@ -28,6 +28,28 @@ export const ReconcileOutput = z.object({
 });
 export type ReconcileOutput = z.infer<typeof ReconcileOutput>;
 
+/** Triage a message: update the user's own wants, or relay a question to a match. */
+export const RouteOutput = z.object({
+  action: z.enum(["portfolio", "ask"]),
+  question: z.string(),
+});
+export type RouteOutput = z.infer<typeof RouteOutput>;
+
+export const ROUTE_TOOL: Anthropic.Tool = {
+  name: "route_message",
+  description: "Classify the user's message. Call exactly once.",
+  strict: true,
+  input_schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      action: { type: "string", enum: ["portfolio", "ask"], description: "ask = a question to relay to a matched counterpart; portfolio = anything about the user's own wants" },
+      question: { type: "string", description: "If action=ask, the question rephrased as a direct question to the counterpart; else empty string." },
+    },
+    required: ["action", "question"],
+  },
+};
+
 /** JSON Schema for one intent — shared by both tools. additionalProperties:false
  *  and every key in `required` (nullable via type union, never optional). */
 const INTENT_ITEM = {

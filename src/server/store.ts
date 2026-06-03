@@ -63,6 +63,7 @@ export class Store {
   }
 
   match(id: string) { return this.data.matches.find((m) => m.id === id); }
+  matchesOf(userId: number) { return this.data.matches.filter((m) => m.aUser === userId || m.bUser === userId); }
   findMatch(x: string, y: string) {
     return this.data.matches.find(
       (m) => (m.aIntent === x && m.bIntent === y) || (m.aIntent === y && m.bIntent === x),

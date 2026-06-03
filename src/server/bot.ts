@@ -26,6 +26,7 @@ export function createBot(token: string, store: Store): Bot {
   const distiller = new LLMDistiller();
   const awaitingRevision = new Map<number, string>(); // userId -> matchId (transient)
   const awaitingClarify = new Map<number, { intentId: string; question: string }>();
+  const awaitingAnswer = new Map<number, { matchId: string; asker: number; question: string }>();
   let simSeq = -1; // synthetic /simulate users get negative ids
 
   const remember = (u: { id: number; username?: string; first_name?: string }) =>
@@ -144,10 +145,32 @@ export function createBot(token: string, store: Store): Bot {
       return;
     }
 
+    // Replying to a question relayed from a counterpart? Pass it straight back.
+    const ans = awaitingAnswer.get(ctx.from.id);
+    if (ans) {
+      awaitingAnswer.delete(ctx.from.id);
+      await bot.api.sendMessage(ans.asker, `💬 The other party replied: ${ctx.message.text}`);
+      return ctx.reply("Passed it back. 👍");
+    }
+
     // If they're answering a clarifying question, fold it into the message.
     let utterance = ctx.message.text;
     const clar = awaitingClarify.get(ctx.from.id);
-    if (clar) { awaitingClarify.delete(ctx.from.id); utterance = `(Answering "${clar.question}") ${ctx.message.text}`; }
+    if (clar) {
+      awaitingClarify.delete(ctx.from.id);
+      utterance = `(Answering "${clar.question}") ${ctx.message.text}`;
+    } else {
+      // Otherwise, maybe it's a question to relay to a matched counterpart.
+      const active = activeMatchOf(ctx.from.id);
+      if (active) {
+        const item = matchItem(active);
+        const { action, question } = await distiller.route(ctx.message.text, `"${item}" with the other party`);
+        if (action === "ask" && question.trim()) {
+          await relayQuestion(ctx.from.id, active, item, question.trim());
+          return;
+        }
+      }
+    }
 
     await ctx.replyWithChatAction("typing");
     // Reconcile against the user's standing portfolio: a message can remove
@@ -244,6 +267,28 @@ export function createBot(token: string, store: Store): Bot {
     const terms = m.price != null ? ` at €${m.price}` : "";
     await notify(m.aUser, `🎉 Deal${terms}! You're connected with ${userLabel(ub)} — sort the details and meet up.`);
     await notify(m.bUser, `🎉 Deal${terms}! You're connected with ${userLabel(ua)} — sort the details and meet up.`);
+  }
+
+  // ── agent-to-agent question relay ──
+  function activeMatchOf(uid: number): Match | undefined {
+    const ms = store.matchesOf(uid).filter((m) => m.status === "proposed" || m.status === "negotiating" || m.status === "connected");
+    return ms.at(-1);
+  }
+  function matchItem(m: Match): string {
+    const a = store.intent(m.aIntent)?.intent, b = store.intent(m.bIntent)?.intent;
+    const offer = a?.kind === "offer" ? a : b?.kind === "offer" ? b : a ?? b;
+    return offer ? itemName(offer) : "the match";
+  }
+  async function relayQuestion(asker: number, m: Match, item: string, question: string) {
+    const cp = other(m, asker);
+    if (isSim(cp)) {
+      await bot.api.sendMessage(asker, "Asked them — relaying…");
+      await bot.api.sendMessage(asker, "💬 The other party replied: (simulated) yes, that works for me.");
+      return;
+    }
+    awaitingAnswer.set(cp, { matchId: m.id, asker, question });
+    await bot.api.sendMessage(cp, `🗣 The other party's agent asks about your "${item}" match:\n"${question}"\n\nReply and I'll pass it back.`);
+    await bot.api.sendMessage(asker, "Asked them — I'll relay their answer.");
   }
 
   // Safety net: periodically surface dormant matches. Cached judges keep it cheap.
