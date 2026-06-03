@@ -8,6 +8,7 @@ export interface Match {
   id: string;
   aUser: number; bUser: number;
   aIntent: string; bIntent: string;
+  domain: string;
   aConsent: boolean; bConsent: boolean;
   status: "proposed" | "negotiating" | "connected" | "passed";
   price?: number;
@@ -15,7 +16,11 @@ export interface Match {
   bApprove?: boolean;
 }
 
-interface Data { users: User[]; intents: StoredIntent[]; matches: Match[]; seq: number }
+/** A pair of people who already settled a category (passed or dealt) — survives
+ *  intent re-statement, so we never re-suggest them for it. */
+interface Dismissal { a: number; b: number; domain: string }
+
+interface Data { users: User[]; intents: StoredIntent[]; matches: Match[]; dismissals: Dismissal[]; seq: number }
 
 /** Tiny JSON-file store — the whole `murmur.db.json`. No native deps; fine at
  *  friends-group scale, survives restarts. */
@@ -27,7 +32,8 @@ export class Store {
     this.path = join(process.cwd(), file);
     this.data = existsSync(this.path)
       ? (JSON.parse(readFileSync(this.path, "utf8")) as Data)
-      : { users: [], intents: [], matches: [], seq: 1 };
+      : { users: [], intents: [], matches: [], dismissals: [], seq: 1 };
+    this.data.dismissals ??= []; // back-compat for older db files
   }
   private save() { writeFileSync(this.path, JSON.stringify(this.data, null, 2)); }
 
@@ -69,14 +75,27 @@ export class Store {
       (m) => (m.aIntent === x && m.bIntent === y) || (m.aIntent === y && m.bIntent === x),
     );
   }
-  addMatch(aUser: number, bUser: number, aIntent: string, bIntent: string): Match {
+  addMatch(aUser: number, bUser: number, aIntent: string, bIntent: string, domain: string): Match {
     const m: Match = {
-      id: `m${this.data.seq++}`, aUser, bUser, aIntent, bIntent,
+      id: `m${this.data.seq++}`, aUser, bUser, aIntent, bIntent, domain,
       aConsent: false, bConsent: false, status: "proposed",
     };
     this.data.matches.push(m);
     this.save();
     return m;
+  }
+
+  /** Remember that a pair has settled a category — never suggest them for it again. */
+  dismiss(u1: number, u2: number, domain: string) {
+    const [a, b] = u1 < u2 ? [u1, u2] : [u2, u1];
+    if (!this.data.dismissals.some((d) => d.a === a && d.b === b && d.domain === domain)) {
+      this.data.dismissals.push({ a, b, domain });
+      this.save();
+    }
+  }
+  isDismissed(u1: number, u2: number, domain: string): boolean {
+    const [a, b] = u1 < u2 ? [u1, u2] : [u2, u1];
+    return this.data.dismissals.some((d) => d.a === a && d.b === b && d.domain === domain);
   }
   persist() { this.save(); }
 

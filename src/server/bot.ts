@@ -32,6 +32,7 @@ export function createBot(token: string, store: Store): Bot {
   const remember = (u: { id: number; username?: string; first_name?: string }) =>
     store.upsertUser({ id: u.id, handle: u.username, name: u.first_name });
   const other = (m: Match, uid: number) => (uid === m.aUser ? m.bUser : m.aUser);
+  const matchDomain = (m: Match) => m.domain ?? store.intent(m.aIntent)?.intent.domain ?? store.intent(m.bIntent)?.intent.domain ?? "";
 
   // Synthetic counterparts (from /simulate) have negative ids, no Telegram chat.
   const isSim = (uid: number) => uid < 0;
@@ -48,6 +49,15 @@ export function createBot(token: string, store: Store): Bot {
     return ctx.reply(list.length ? list.map((s) => "• " + fmt(s.intent)).join("\n") : "No wants yet — just tell me one.");
   });
   bot.command("clear", (ctx) => { if (!ctx.from) return; store.clearUser(ctx.from.id); return ctx.reply("Cleared your wants."); });
+  bot.command("pass", (ctx) => {
+    if (!ctx.from) return;
+    const m = activeMatchOf(ctx.from.id);
+    if (!m) return ctx.reply("No active match to pass on.");
+    m.status = "passed";
+    store.dismiss(m.aUser, m.bUser, matchDomain(m));
+    store.persist();
+    return ctx.reply("Got it — I won't suggest that match again.");
+  });
   bot.command("status", (ctx) => {
     if (!ctx.from) return;
     const mine = store.intentsOf(ctx.from.id).filter((s) => s.intent.active !== false);
@@ -92,7 +102,7 @@ export function createBot(token: string, store: Store): Bot {
     if (!side) return ctx.answerCallbackQuery();
 
     if (tag === "c") {
-      if (decision === "no") { m.status = "passed"; store.persist(); await ctx.editMessageText("No worries — passed."); return ctx.answerCallbackQuery(); }
+      if (decision === "no") { m.status = "passed"; store.dismiss(m.aUser, m.bUser, matchDomain(m)); store.persist(); await ctx.editMessageText("No worries — passed. I won't suggest this again."); return ctx.answerCallbackQuery(); }
       if (side === "a") m.aConsent = true; else m.bConsent = true;
       store.persist();
       await ctx.editMessageText("👍 Interested — waiting for the other side…");
@@ -104,7 +114,7 @@ export function createBot(token: string, store: Store): Bot {
     if (tag === "d") {
       if (m.status !== "negotiating") return ctx.answerCallbackQuery("This proposal is no longer open.");
       if (decision === "abort") {
-        m.status = "passed"; store.persist();
+        m.status = "passed"; store.dismiss(m.aUser, m.bUser, matchDomain(m)); store.persist();
         await ctx.editMessageText("Aborted.");
         await bot.api.sendMessage(other(m, ctx.from.id), "The other side aborted the deal.");
         return ctx.answerCallbackQuery();
@@ -219,8 +229,9 @@ export function createBot(token: string, store: Store): Bot {
   }
 
   async function propose(a: StoredIntent, b: StoredIntent) {
+    if (store.isDismissed(a.userId, b.userId, a.intent.domain)) return; // already passed/dealt — don't re-suggest
     if (store.findMatch(a.intent.id, b.intent.id)) return;
-    const m = store.addMatch(a.userId, b.userId, a.intent.id, b.intent.id);
+    const m = store.addMatch(a.userId, b.userId, a.intent.id, b.intent.id, a.intent.domain);
     if (isSim(m.aUser)) m.aConsent = true; // sim auto-connects
     if (isSim(m.bUser)) m.bConsent = true;
     store.persist();
@@ -262,7 +273,7 @@ export function createBot(token: string, store: Store): Bot {
   }
 
   async function connect(m: Match) {
-    m.status = "connected"; store.persist();
+    m.status = "connected"; store.dismiss(m.aUser, m.bUser, matchDomain(m)); store.persist();
     const ua = store.user(m.aUser), ub = store.user(m.bUser);
     const terms = m.price != null ? ` at €${m.price}` : "";
     await notify(m.aUser, `🎉 Deal${terms}! You're connected with ${userLabel(ub)} — sort the details and meet up.`);
