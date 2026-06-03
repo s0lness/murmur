@@ -50,6 +50,25 @@ export const ROUTE_TOOL: Anthropic.Tool = {
   },
 };
 
+/** The counterpart agent answers on its user's behalf, or escalates to the human. */
+export const AnswerOutput = z.object({ answer: z.string(), escalate: z.boolean() });
+export type AnswerOutput = z.infer<typeof AnswerOutput>;
+
+export const ANSWER_TOOL: Anthropic.Tool = {
+  name: "answer_or_escalate",
+  description: "Answer the counterparty's question on your user's behalf, or escalate to the human. Call once.",
+  strict: true,
+  input_schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      answer: { type: "string", description: "A short answer on the user's behalf if you can; otherwise a brief note." },
+      escalate: { type: "boolean", description: "true ONLY if the question needs the human (info you don't have)." },
+    },
+    required: ["answer", "escalate"],
+  },
+};
+
 /** JSON Schema for one intent — shared by both tools. additionalProperties:false
  *  and every key in `required` (nullable via type union, never optional). */
 const INTENT_ITEM = {

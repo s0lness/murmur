@@ -279,16 +279,42 @@ export function createBot(token: string, store: Store): Bot {
     const offer = a?.kind === "offer" ? a : b?.kind === "offer" ? b : a ?? b;
     return offer ? itemName(offer) : "the match";
   }
+  const escalations = new Map<string, number[]>(); // matchId -> escalation timestamps
+  const underRateLimit = (matchId: string) => {
+    const now = Date.now();
+    const ts = (escalations.get(matchId) ?? []).filter((t) => t > now - 10 * 60_000);
+    escalations.set(matchId, ts);
+    if (ts.length >= 2) return false; // max 2 human escalations / 10 min / match
+    ts.push(now);
+    return true;
+  };
+
+  /** The counterpart's agent acts as a BUFFER: answer from what it knows, and
+   *  only escalate to the human when it must (rate-limited). */
   async function relayQuestion(asker: number, m: Match, item: string, question: string) {
     const cp = other(m, asker);
+    const ci = (m.aUser === cp ? store.intent(m.aIntent) : store.intent(m.bIntent))?.intent;
+    const context = ci
+      ? `wants to ${ci.kind === "seek" ? "buy" : ci.kind === "offer" ? "sell" : ci.kind} ${(ci.publicTags ?? ci.tags).join(", ")}${ci.valuation != null ? ` (around €${ci.valuation})` : ""}`
+      : item;
+
     if (isSim(cp)) {
-      await bot.api.sendMessage(asker, "Asked them — relaying…");
-      await bot.api.sendMessage(asker, "💬 The other party replied: (simulated) yes, that works for me.");
+      await bot.api.sendMessage(asker, `💬 Their agent: yes, that works (simulated).`);
+      return;
+    }
+
+    const { answer, escalate } = await distiller.answer(question, context);
+    if (!escalate && answer.trim()) {
+      await bot.api.sendMessage(asker, `💬 Their agent: ${answer.trim()}`);
+      return;
+    }
+    if (!underRateLimit(m.id)) {
+      await bot.api.sendMessage(asker, "Their agent is handling a few questions — it'll follow up shortly.");
       return;
     }
     awaitingAnswer.set(cp, { matchId: m.id, asker, question });
-    await bot.api.sendMessage(cp, `🗣 The other party's agent asks about your "${item}" match:\n"${question}"\n\nReply and I'll pass it back.`);
-    await bot.api.sendMessage(asker, "Asked them — I'll relay their answer.");
+    await bot.api.sendMessage(cp, `🗣 A question about your "${item}" match needs you:\n"${question}"\n\nReply and I'll pass it back.`);
+    await bot.api.sendMessage(asker, "Good question — checking with them directly.");
   }
 
   // Safety net: periodically surface dormant matches. Cached judges keep it cheap.

@@ -58,6 +58,14 @@ Two failure modes to avoid:
 
 Call the emit_intents tool exactly once with your result.`;
 
+/** Answer prompt: the counterpart agent acts as a buffer — answers from what it
+ *  knows, only escalating to the human when it truly must. */
+export const SYSTEM_PROMPT_ANSWER = `You are a user's agent in a marketplace deal. The other party's agent asks a question. Answer on your user's behalf whenever you reasonably can — from what you know about your user's want/offer (the item, general interest, their budget/price, basic fit). Keep answers short and natural.
+
+Set escalate=true ONLY when the question genuinely needs the human: subjective preferences, exact logistics (a specific time/place), condition details you don't have, or a personal yes/no. Things like "are you interested?", "is it within your budget?", "is it the item described?" do NOT need the human — answer them yourself.
+
+Act as a BUFFER: a good agent shields its user from trivial or repetitive questions. Call answer_or_escalate exactly once.`;
+
 /** Router prompt: decide whether a message updates the user's wants, or is a
  *  question to relay to a matched counterpart. */
 export const SYSTEM_PROMPT_ROUTER = `You triage a single message a user sent to their commerce agent.

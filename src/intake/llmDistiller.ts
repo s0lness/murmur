@@ -2,8 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { PrivateIntent } from "../core/intent";
 import { cached, cacheKey } from "./cache";
 import type { Distiller, PersonaUtterances } from "./distiller";
-import { SYSTEM_PROMPT, SYSTEM_PROMPT_RECONCILE, SYSTEM_PROMPT_ROUTER } from "./prompt";
-import { DistillerOutput, type DistilledIntent, EMIT_INTENTS_TOOL, RECONCILE_TOOL, ReconcileOutput, ROUTE_TOOL, RouteOutput } from "./schema";
+import { SYSTEM_PROMPT, SYSTEM_PROMPT_ANSWER, SYSTEM_PROMPT_RECONCILE, SYSTEM_PROMPT_ROUTER } from "./prompt";
+import { ANSWER_TOOL, AnswerOutput, DistillerOutput, type DistilledIntent, EMIT_INTENTS_TOOL, RECONCILE_TOOL, ReconcileOutput, ROUTE_TOOL, RouteOutput } from "./schema";
 
 const MODEL = "claude-opus-4-8";
 
@@ -55,6 +55,21 @@ export class LLMDistiller implements Distiller {
 
     const sourceText = input.utterances.join(" / ");
     return intents.map((d, i) => toIntent(d, `${input.agentId}-i${i}`, sourceText));
+  }
+
+  /** Counterpart agent: answer the question on the user's behalf, or escalate. */
+  async answer(question: string, userContext: string): Promise<AnswerOutput> {
+    const response = await this.client().messages.create({
+      model: MODEL,
+      max_tokens: 512,
+      system: [{ type: "text", text: SYSTEM_PROMPT_ANSWER, cache_control: { type: "ephemeral" } }],
+      tools: [ANSWER_TOOL],
+      tool_choice: { type: "tool", name: ANSWER_TOOL.name },
+      messages: [{ role: "user", content: `Your user: ${userContext}\n\nThe other party asks: "${question}"` }],
+    });
+    const block = response.content.find((b) => b.type === "tool_use");
+    if (!block || block.type !== "tool_use") throw new Error("answer: no tool call");
+    return AnswerOutput.parse(block.input);
   }
 
   /** Triage a message: a portfolio update, or a question to relay to a match. */
