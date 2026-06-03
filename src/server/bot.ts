@@ -108,7 +108,7 @@ export function createBot(token: string, store: Store): Bot {
   bot.command("rematch", async (ctx) => {
     if (!ctx.from) return;
     await ctx.reply("Rescanning the pool for matches…");
-    await rescan(store.intentsOf(ctx.from.id));
+    await settle();
     await ctx.reply("Done — I've pinged you about any new matches.");
   });
   // Dev: inject a synthetic counterpart that auto-responds, so you can test the
@@ -123,8 +123,7 @@ export function createBot(token: string, store: Store): Bot {
     if (intents.length === 0) return ctx.reply("Couldn't distill an intent from that.");
     const stored = intents.map((i) => store.addIntent(simId, i));
     await ctx.reply(`🧪 Simulated friend posted: ${stored.map((s) => fmt(s.intent)).join("; ")}\nMatching…`);
-    await rescan(stored.filter((s) => s.intent.active !== false));
-    await scanMultiDeals();
+    await settle();
   });
 
   // ── buttons: c = connect/pass on a match, d = approve/revise/abort on a proposal ──
@@ -240,30 +239,57 @@ export function createBot(token: string, store: Store): Bot {
     if (lines.length === 0) return ctx.reply("Noted — nothing changed. Tell me something you want to buy, sell, swap, or find.");
     await ctx.reply(lines.join("\n\n") + "\n\nBroadcasting a blur. I'll ping you on a match.");
 
-    // Match the new intents; if nothing matched cleanly but a candidate is a
-    // plausible-but-ambiguous match, ask the user one clarifying question.
-    let matched = false;
+    // Global batch settlement decides + proposes matches/group-buys/rings.
+    await settle();
+    // If a fresh intent still found no match but a plausible one exists, ask once.
+    const inMatch = (id: string) => store.matchesOf(ctx.from!.id).some((m) => m.aIntent === id || m.bIntent === id);
     let bestClarify: { intentId: string; question: string; score: number } | undefined;
     for (const s of added.filter((x) => x.intent.active !== false)) {
-      const { matches, clarifications } = await matchAgainstPool(s, store.pool());
-      for (const hit of matches) { await propose(s, hit); matched = true; }
+      if (inMatch(s.id)) continue;
+      const { clarifications } = await matchAgainstPool(s, store.pool());
       for (const c of clarifications) {
         if (!bestClarify || c.score > bestClarify.score) bestClarify = { intentId: s.id, question: c.question, score: c.score };
       }
     }
-    if (!matched && bestClarify) {
+    if (bestClarify) {
       awaitingClarify.set(ctx.from.id, { intentId: bestClarify.intentId, question: bestClarify.question });
       await ctx.reply(`🤔 Possible match — one detail first: ${bestClarify.question}`);
     }
-    await scanMultiDeals(); // form any group-buys / barter rings
   });
 
-  async function rescan(intents: StoredIntent[]) {
-    for (const s of intents) {
-      if (s.intent.active === false) continue;
+  const irOk = (seek: PrivateIntent, offer: PrivateIntent) => {
+    const buyerCeil = Math.min(seek.valuation ?? Infinity, seek.fallback ?? Infinity);
+    const sellerFloor = Math.max(offer.valuation ?? 0, offer.fallback ?? 0);
+    return buyerCeil >= sellerFloor; // a feasible, IR-respecting price exists
+  };
+  const edgeSurplus = (s: PrivateIntent, o: PrivateIntent) =>
+    s.valuation != null && o.valuation != null ? Math.max(0, s.valuation - o.valuation) : 0;
+
+  /** Batch settlement (the solver, live): build commerce edges with the SEMANTIC
+   *  matcher, gate by IR (fallback), then a coverage allocation (most-constrained
+   *  seeker first, qty-aware) decides who clears — then group-buys + barter rings.
+   *  Replaces greedy per-pair proposing with a global, IR-respecting allocation. */
+  async function settle() {
+    const active = store.pool().filter((s) => s.intent.active !== false);
+    const offers = active.filter((s) => s.intent.kind === "offer");
+    type Edge = { seek: StoredIntent; offer: StoredIntent; surplus: number };
+    const bySeek = new Map<string, Edge[]>();
+    for (const s of active.filter((x) => x.intent.kind === "seek")) {
       const { matches } = await matchAgainstPool(s, store.pool());
-      for (const hit of matches) await propose(s, hit);
+      const es = matches
+        .filter((o) => o.intent.kind === "offer" && irOk(s.intent, o.intent))
+        .map((o) => ({ seek: s, offer: o, surplus: edgeSurplus(s.intent, o.intent) }));
+      if (es.length) bySeek.set(s.id, es);
     }
+    const cap = new Map(offers.map((o) => [o.id, o.intent.qty ?? 1]));
+    for (const sid of [...bySeek.keys()].sort((a, b) => bySeek.get(a)!.length - bySeek.get(b)!.length)) {
+      const opts = bySeek.get(sid)!.filter((e) => (cap.get(e.offer.id) ?? 0) > 0).sort((a, b) => b.surplus - a.surplus);
+      if (opts.length === 0) continue;
+      const e = opts[0]!;
+      cap.set(e.offer.id, (cap.get(e.offer.id) ?? 0) - 1);
+      await propose(e.seek, e.offer);
+    }
+    await scanMultiDeals();
   }
 
   async function propose(a: StoredIntent, b: StoredIntent) {
@@ -464,10 +490,9 @@ export function createBot(token: string, store: Store): Bot {
     }
   }
 
-  // Safety net: periodically surface dormant matches + form group/ring deals.
-  setInterval(() => {
-    rescan(store.pool()).then(() => scanMultiDeals()).catch((e) => console.error("scan error:", e));
-  }, 3 * 60_000);
+  // Safety net: periodically re-run the batch settlement (surfaces dormant
+  // matches, group-buys, and rings). Cached judges keep it cheap.
+  setInterval(() => { settle().catch((e) => console.error("settle error:", e)); }, 3 * 60_000);
 
   bot.catch((err) => console.error("bot error:", err.error));
   return bot;
