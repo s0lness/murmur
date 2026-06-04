@@ -82,6 +82,94 @@ Hard rules (a bad proposal wastes a human's attention and erodes trust):
 - Most residuals have NO real counterpart. Returning an EMPTY list is the correct, expected outcome — do not manufacture matches to look useful. Quality over quantity.
 Call propose once.`;
 
+// ── hybrid: LLM emits fuzzy edges, the deterministic detector closes the loops ──
+
+/** A semantic equivalence the keyword matcher misses: token `a` (someone HAS)
+ *  is substitutable for token `b` (someone WANTS). question != "" when the
+ *  substitution is a genuine leap that needs the receiver's buy-in. */
+export interface FuzzyEdge { a: string; b: string; confidence: number; question: string }
+
+const EDGE_TOOL: Anthropic.Tool = {
+  name: "edges",
+  description: "Return fuzzy-equivalence edges over residual tokens. Call once.",
+  strict: true,
+  input_schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      edges: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            a: { type: "string", description: "exact token one side HAS/OFFERS" },
+            b: { type: "string", description: "exact token another side WANTS/SEEKS, substitutable for a" },
+            confidence: { type: "number", description: "0..1; ~0.9 same-thing-worded-differently, ~0.5 genuine substitute" },
+            question: { type: "string", description: "confirm question if the substitution needs buy-in, else empty" },
+          },
+          required: ["a", "b", "confidence", "question"],
+        },
+      },
+    },
+    required: ["edges"],
+  },
+};
+
+const EDGE_SYS = `You are a FUZZY-EQUIVALENCE ORACLE. You are NOT building deals — a deterministic engine does that. Your only job: spot pairs of item tokens that a keyword matcher would treat as different but that actually refer to substitutable things, where one token appears on a HAVE/OFFER side and the other on a WANT/SEEK side of the residual.
+
+Examples of edges to emit: "ps5" ⇄ "games console"; "road bike" ⇄ "commuter bike"; "mirrorless camera" ⇄ "camera"; "ikea kallax" ⇄ "shelving".
+
+Rules:
+- a must be something a person HAS/OFFERS; b something a (different) person WANTS/SEEKS. Use EXACT token strings from the input.
+- confidence ~0.9 + empty question when they're the same thing worded differently (ps5 IS a games console). confidence ~0.5 + a short confirm question when it's a real substitute someone might decline ("would a road bike work as a commuter?").
+- Only link genuinely substitutable items. Do NOT link unrelated things. If there are none, return an empty list.
+Call edges once.`;
+
+/** LLM fuzzy-edge oracle over the residual. Cached. The deterministic detector
+ *  then closes cycles/matches over the token-augmented graph. */
+export async function proposeEdges(residual: ResidualIntent[]): Promise<FuzzyEdge[]> {
+  if (residual.length < 2) return [];
+  const key = cacheKey("edges-v1", modelId(), residual);
+  const { value } = await cached<FuzzyEdge[]>(key, async () => {
+    const res = await anthropic().messages.create({
+      model: modelId(), max_tokens: 2000,
+      system: [{ type: "text", text: EDGE_SYS, cache_control: { type: "ephemeral" } }],
+      tools: [EDGE_TOOL], tool_choice: { type: "tool", name: "edges" },
+      messages: [{ role: "user", content: JSON.stringify(residual) }],
+    });
+    if (res.stop_reason === "max_tokens") throw new Error("edges: truncated (raise max_tokens)");
+    const b = res.content.find((x) => x.type === "tool_use");
+    if (!b || b.type !== "tool_use") throw new Error("edges: no tool call");
+    return (b.input as { edges?: FuzzyEdge[] }).edges ?? [];
+  });
+  return value;
+}
+
+/** Union-find over fuzzy edges → a token-rewrite that maps every member of an
+ *  equivalence class to one canonical token, plus the confirm question (if any)
+ *  attached to each class. Feed canon() over have/want/tags, then run the
+ *  deterministic detector: equivalent tokens now collide and cycles close. */
+export function buildAliases(edges: FuzzyEdge[]): { canon: (t: string) => string; questionFor: (t: string) => string } {
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    if (!parent.has(x)) parent.set(x, x);
+    let r = x;
+    while (parent.get(r) !== r) r = parent.get(r)!;
+    parent.set(x, r);
+    return r;
+  };
+  const union = (x: string, y: string) => { parent.set(find(x), find(y)); };
+  const q = new Map<string, string>();
+  for (const e of edges) { union(e.a, e.b); if (e.question) { q.set(e.a, e.question); q.set(e.b, e.question); } }
+  const canon = (t: string) => (parent.has(t) ? find(t) : t);
+  const questionFor = (t: string) => {
+    for (const [tok, question] of q) if (canon(tok) === canon(t)) return question;
+    return "";
+  };
+  return { canon, questionFor };
+}
+
 /** LLM failover matchmaker over the residual. Cached for reproducibility. */
 export async function proposeFuzzy(residual: ResidualIntent[]): Promise<FuzzyProposal[]> {
   if (residual.length < 2) return [];

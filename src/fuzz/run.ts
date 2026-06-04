@@ -5,7 +5,7 @@ import { loadDotenv } from "../intake/env";
 import { LLMDistiller } from "../intake/llmDistiller";
 import { normalizePool } from "../eval/normalize";
 import { barterCycles, groupBuys, type Party } from "../multilateral/detect";
-import { proposeFuzzy, type ResidualIntent } from "../solver/helper";
+import { buildAliases, proposeEdges, type ResidualIntent } from "../solver/helper";
 import { score, solve } from "../solver/solve";
 import { decideMatch, decidePrice } from "./human";
 import { makePersonas, type Persona } from "./persona";
@@ -127,27 +127,56 @@ for (const r of rings) {
   else declines.push(`ring ${members.map((m) => m.name).join("→")}: someone passed`);
 }
 
-// ── helper failover: LLM matchmaker recovers fuzzy matches from the residual ──
+// ── helper failover (hybrid): LLM emits fuzzy edges, the deterministic detector
+//    closes cycles/matches over the token-augmented residual, human gate confirms ──
 let helperStats = "";
 if (HELP) {
   const cleared0 = new Set(deals.flatMap((d) => d.who));
-  const residual: ResidualIntent[] = parties
-    .filter((p) => !cleared0.has(personaOf.get(p.id)!.name))
-    .map((p) => ({ id: p.id, who: personaOf.get(p.id)!.name, kind: p.intent.kind, item: item(p.intent), have: p.intent.have ?? [], want: p.intent.want ?? [] }));
-  const proposals = await proposeFuzzy(residual);
-  let recovered = 0;
-  for (const pr of proposals) {
-    const seen = new Set<string>();
-    const legs = pr.legs.map((l) => ({ leg: l, p: personaOf.get(l.id) }))
-      .filter((x): x is { leg: typeof x.leg; p: Persona } => !!x.p && !seen.has(x.p.name) && (seen.add(x.p.name), true));
-    if (legs.length < 2) continue;
-    const votes = await Promise.all(legs.map(({ leg, p }) =>
-      decideMatch(p, `Your agent found a match the main solver missed: you give "${leg.gives}" and receive "${leg.gets}". ${pr.question} Interested?`)));
-    const who = legs.map((x) => x.p.name);
-    if (votes.every((v) => v.connect)) { deals.push({ kind: `~${pr.kind}`, who, detail: `${pr.summary} (helper, conf ${pr.confidence})` }); recovered++; }
-    else { const i = votes.findIndex((v) => !v.connect); declines.push(`helper ${pr.kind} (${who.join(",")}): ${legs[i]?.p.name} passed — "${votes[i]?.reason}"`); }
+  const residualParties = parties.filter((p) => !cleared0.has(personaOf.get(p.id)!.name));
+  const residual: ResidualIntent[] = residualParties.map((p) => ({
+    id: p.id, who: personaOf.get(p.id)!.name, kind: p.intent.kind, item: item(p.intent),
+    have: p.intent.have ?? [], want: p.intent.want ?? [],
+  }));
+  const edges = await proposeEdges(residual);
+  const { canon, questionFor } = buildAliases(edges);
+  // augment: rewrite every token to its equivalence-class canonical, then re-detect
+  const aug: Party[] = residualParties.map((p) => {
+    const tags = (p.intent.publicTags ?? p.intent.tags).map(canon);
+    return { id: p.id, intent: { ...p.intent, tags, publicTags: tags, have: (p.intent.have ?? []).map(canon), want: (p.intent.want ?? []).map(canon) } };
+  });
+  const augRings = barterCycles(aug).filter((r) => r.members.length >= 3);
+  let recovered = 0, attempts = 0;
+
+  // rings: deterministic loop over the augmented graph; frame each leg in ORIGINAL terms
+  for (const r of augRings) {
+    attempts++;
+    const orig = r.members.map((m) => intentById.get(m.id)!);
+    const ps = r.members.map((m) => personaOf.get(m.id)!);
+    const n = r.members.length;
+    const q = orig.flatMap((o) => (o.want ?? []).map(questionFor)).find((x) => x) ?? "";
+    const votes = await Promise.all(r.members.map((_, k) => {
+      const gives = (orig[k]!.have ?? []).join("+"), gets = (orig[(k + 1) % n]!.have ?? []).join("+");
+      return decideMatch(ps[k]!, `Your agent found a swap ring the main solver missed: you give "${gives}" and receive "${gets}". ${q} Interested?`);
+    }));
+    if (votes.every((v) => v.connect)) { deals.push({ kind: "~ring", who: ps.map((p) => p.name), detail: `${n}-way swap (helper edges)` }); recovered++; }
+    else { const i = votes.findIndex((v) => !v.connect); declines.push(`helper ring (${ps.map((p) => p.name).join("→")}): ${ps[i]?.name} passed — "${votes[i]?.reason}"`); }
   }
-  helperStats = `  helper: ${proposals.length} proposals → ${recovered} recovered (${proposals.length ? Math.round((recovered / proposals.length) * 100) : 0}% accepted)`;
+
+  // 2-party commerce/substitute surfaced only by the augmented graph
+  for (const t of solve(aug, "coverage").trades) {
+    if (t.kind !== "commerce") continue;
+    const bP = personaOf.get(t.buyer)!, sP = personaOf.get(t.seller)!;
+    if (bP === sP || cleared0.has(bP.name) || cleared0.has(sP.name)) continue;
+    const sI = intentById.get(t.seller)!;
+    const q = (sI.tags ?? []).map(questionFor).find((x) => x) ?? "";
+    if (!q && canon(item(sI)) === item(sI)) continue; // no fuzzy edge involved → not a helper recovery
+    attempts++;
+    const bC = await decideMatch(bP, `Your agent found a near-match the main solver missed: buy "${item(sI)}". ${q} Interested?`);
+    const sC = await decideMatch(sP, `Your agent found a buyer for your "${item(sI)}" the main solver missed. Interested?`);
+    if (bC.connect && sC.connect) { deals.push({ kind: "~sub", who: [bP.name, sP.name], detail: `${item(sI)} (helper edges)` }); recovered++; }
+    else { const who = !bC.connect ? bP : sP, reason = !bC.connect ? bC.reason : sC.reason; declines.push(`helper sub (${bP.name}⇄${sP.name}, ${item(sI)}): ${who.name} passed — "${reason}"`); }
+  }
+  helperStats = `  helper(hybrid): ${edges.length} edges → ${augRings.length} rings+subs; ${attempts} attempts → ${recovered} recovered`;
 }
 
 // ── report ──

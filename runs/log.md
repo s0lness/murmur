@@ -80,3 +80,27 @@ Built `src/solver/helper.ts` — an LLM matchmaker that runs **only on intents t
 This makes the helper a *graph augmenter*, not a *match builder* — and folds the group-buy↔barter unification in naturally (the same augmented graph feeds both). Highest-value next build. The current pure-LLM helper stays as a baseline to measure the hybrid against.
 
 Harness flags now: `npm run fuzz <N> [ring] [cring] [norm] [help]`.
+
+---
+
+## Session 5 — 2026-06-04 · hybrid helper (LLM edges → deterministic close)
+
+Built the architecture decided in Session 4. `help` now runs the **hybrid**:
+1. **LLM = fuzzy-edge oracle** (`proposeEdges`): over the residual, emit semantic equivalences a keyword matcher misses ("ps5"⇄"games console", "road bike"⇄"commuter bike"), each with a confidence and a confirm question when it's a real substitute. It does NOT build matches.
+2. **`buildAliases` (union-find)** turns edges into a token rewrite (each equivalence class → one canonical token).
+3. **Deterministic close**: rewrite the residual's tags/have/want, then run the unchanged `barterCycles` + `solve` over the augmented graph. Cycles/matches are assembled by the reliable graph algorithm, framed back in ORIGINAL terms.
+4. **Human gate** confirms (per-leg for rings, per-side for subs), carrying the confirm question.
+
+**Result — the hybrid fixes Session 4's failure:**
+
+| scenario | pure-LLM helper (S4) | hybrid (S5) |
+|---|---|---|
+| planted lexical-gap ring (`cring`) | found it but **scrambled the legs** → 0 recovered | **recovered cleanly → 1** ✓ |
+| organic N=20 residual | 9 proposals, hallucinated, 0 recovered | 12 edges, **0 false deals**, 0 recovered |
+
+- **`cring help`:** the PS5→bike→camera→PS5 ring (which `barterCycles` can't see because "games console"≠"ps5" by word overlap) is now **recovered** — all three no-cash swappers accept. The deterministic close gets the who-gives-what right, which the pure-LLM assembly could not. The gate still caught a degenerate 4-cycle (Hannah giving a road bike to *get* a road bike — rejected).
+- **`20 help`:** 12 fuzzy edges proposed but **0 cycles close** and the 1 substitute attempt is (correctly) declined. No hallucinated deals reach the gate. This **re-confirms Session 4's structural finding from the other direction**: with representation/token-drift removed as an excuse, the organic residual *still* has no closeable multilateral structure — the bottleneck is genuinely population density, not expressivity.
+
+**Net / decision:** the oracle/solver split holds yet again — LLM for fuzzy equivalence (recall), deterministic engine for combinatorial assembly (precision), human for confirm (safety). This is the shape to port to the live bot's settle loop: run it as a failover only on the unmatched residual, surface recoveries as confirm-questions, never auto-settle. The pure-LLM `proposeFuzzy` stays in the tree as the measured baseline. Group-buy↔barter unification falls out for free (same augmented graph feeds both detectors). Open item: rings need population density to appear organically — worth a larger-N or barter-seeded run to quantify the yield curve.
+
+Harness flags now: `npm run fuzz <N> [ring] [cring] [norm] [help]` (help = hybrid).
