@@ -17,6 +17,9 @@ export class Agent {
   readonly pseudonym: string;
   readonly persona: string;
   private sessions = new Map<string, Session>();
+  /** signalId -> my private intent id, for the intents I've broadcast. Lets a
+   *  responder bind an incoming negotiation to the exact advertised intent. */
+  private published = new Map<string, string>();
 
   constructor(
     identity: Identity,
@@ -45,6 +48,7 @@ export class Agent {
     for (const intent of this.intents) {
       if (intent.active === false) continue;
       const signal = blur(intent, this.pseudonym);
+      this.published.set(signal.id, intent.id);
       this.ctx.log.append({
         t: this.ctx.now(),
         type: "signal_published",
@@ -71,8 +75,8 @@ export class Agent {
       : this.pseudonym < signal.pseudonymId;
     if (!iInitiate) return;
 
-    const key = sessionKey(signal.domain, this.pseudonym, signal.pseudonymId);
-    if (this.sessions.has(key)) return; // already engaged with this counterparty
+    const key = sessionKey(signal.domain, this.pseudonym, signal.pseudonymId, signal.id);
+    if (this.sessions.has(key)) return; // already engaged on THIS signal (not just this counterparty)
 
     const opener = this.brain.open(match.intent, signal);
     if (!opener) return;
@@ -80,6 +84,7 @@ export class Agent {
     const session: Session = {
       id: key,
       intentId: match.intent.id,
+      signalId: signal.id,
       myPseudonym: this.pseudonym,
       counterparty: signal.pseudonymId,
       role: "initiator",
@@ -111,17 +116,20 @@ export class Agent {
   private onDM(m: DM): void {
     let session = this.sessions.get(m.sessionId);
     if (!session) {
-      // Responder side: first contact. Find one of my intents in this domain.
-      const domain = m.sessionId.slice(0, m.sessionId.indexOf(":"));
-      const intent = this.intents.find((i) => i.domain === domain);
+      // Responder side: first contact. Bind to the EXACT advertised intent the
+      // opener's signal referenced (not "first intent in this domain") so a
+      // second intent in the same domain gets its own session and the right one.
+      const intentId = this.published.get(m.signalId);
+      const intent = intentId ? this.intents.find((i) => i.id === intentId) : undefined;
       if (!intent) return;
       session = {
         id: m.sessionId,
         intentId: intent.id,
+        signalId: m.signalId,
         myPseudonym: this.pseudonym,
         counterparty: m.from,
         role: "responder",
-        domain,
+        domain: intent.domain,
         rounds: 0,
         closed: false,
       };
@@ -163,6 +171,8 @@ export class Agent {
         type: "deal_closed",
         sessionId: session.id,
         domain: session.domain,
+        a: this.pseudonym,
+        b: session.counterparty,
         price: m.body.price,
         terms: reply.note,
       });
@@ -180,6 +190,6 @@ export class Agent {
   }
 
   private send(session: Session, body: NegMessage): void {
-    this.bus.dm({ from: this.pseudonym, to: session.counterparty, sessionId: session.id, body });
+    this.bus.dm({ from: this.pseudonym, to: session.counterparty, sessionId: session.id, signalId: session.signalId, body });
   }
 }

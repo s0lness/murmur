@@ -29,8 +29,8 @@ export function computeMetrics(log: EventLog, agents: Agent[]): Metrics {
   let realizedSurplus = 0;
   const dealLines: string[] = [];
   for (const d of closed) {
-    const rest = d.sessionId.slice(d.domain.length + 1);
-    const [p1, p2] = rest.split("~");
+    // Parties come from structured event fields, not from parsing the sessionId.
+    const p1 = d.a, p2 = d.b;
     const a1 = byPseudo.get(p1 ?? "");
     const a2 = byPseudo.get(p2 ?? "");
     const label = `${a1?.persona ?? p1}  ⇄  ${a2?.persona ?? p2}`;

@@ -5,7 +5,7 @@ export type Event =
   | { t: number; type: "interest"; by: string; towards: string; signalId: string; score: number }
   | { t: number; type: "negotiation_opened"; sessionId: string; initiator: string; domain: string }
   | { t: number; type: "negotiation_msg"; sessionId: string; from: string; mtype: string; price?: number }
-  | { t: number; type: "deal_closed"; sessionId: string; domain: string; price?: number; terms?: string }
+  | { t: number; type: "deal_closed"; sessionId: string; domain: string; a: string; b: string; price?: number; terms?: string }
   | { t: number; type: "deal_failed"; sessionId: string; reason: string };
 
 export class EventLog {
