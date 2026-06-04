@@ -2,6 +2,7 @@ import { Bot, type Context, InlineKeyboard } from "grammy";
 import { type PrivateIntent } from "../core/intent";
 import { LLMDistiller } from "../intake/llmDistiller";
 import { barterCycles, groupBuys, type Party } from "../multilateral/detect";
+import { money } from "../core/currency";
 import { buildAliases, proposeEdges, type ResidualIntent } from "../solver/helper";
 import { matchAgainstPool } from "./commons";
 import { type Match, type MultiDeal, Store, type StoredIntent, type User } from "./store";
@@ -164,7 +165,7 @@ export function createBot(token: string, store: Store): Bot {
       // approve
       if (side === "a") m.aApprove = true; else m.bApprove = true;
       store.persist();
-      await ctx.editMessageText(`✅ Approved €${m.price}. Waiting for the other side…`);
+      await ctx.editMessageText(`✅ Approved ${money(m.price!)}. Waiting for the other side…`);
       await ctx.answerCallbackQuery();
       if (m.aApprove && m.bApprove) await connect(m);
       return;
@@ -186,7 +187,7 @@ export function createBot(token: string, store: Store): Bot {
       if (!m || !Number.isFinite(num)) return ctx.reply("Couldn't read a number — just re-state your want if you like.");
       const mine = store.intent(ctx.from.id === m.aUser ? m.aIntent : m.bIntent);
       if (mine) { mine.intent.valuation = num; store.persist(); }
-      await ctx.reply(`Got it — renegotiating around €${num}.`);
+      await ctx.reply(`Got it — renegotiating around ${money(num)}.`);
       m.status = "proposed"; m.aApprove = false; m.bApprove = false; store.persist();
       await negotiate(m);
       return;
@@ -357,7 +358,7 @@ export function createBot(token: string, store: Store): Bot {
     const item = itemName(ai.kind === "offer" ? ai : bi);
     const kb = (id: string) => new InlineKeyboard()
       .text("Approve", `d:${id}:approve`).text("Revise", `d:${id}:revise`).text("Abort", `d:${id}:abort`);
-    const msg = `💬 Fair price worked out: *€${price}* for *${item}*.\nApprove?`;
+    const msg = `💬 Fair price worked out: *${money(price)}* for *${item}*.\nApprove?`;
     await notify(m.aUser, msg, { parse_mode: "Markdown", reply_markup: kb(m.id) });
     await notify(m.bUser, msg, { parse_mode: "Markdown", reply_markup: kb(m.id) });
     if (m.aApprove && m.bApprove) await connect(m);
@@ -366,7 +367,7 @@ export function createBot(token: string, store: Store): Bot {
   async function connect(m: Match) {
     m.status = "connected"; store.dismiss(m.aUser, m.bUser, matchDomain(m)); store.persist();
     const ua = store.user(m.aUser), ub = store.user(m.bUser);
-    const terms = m.price != null ? ` at €${m.price}` : "";
+    const terms = m.price != null ? ` at ${money(m.price)}` : "";
     await notify(m.aUser, `🎉 Deal${terms}! You're connected with ${userLabel(ub)} — sort the details and meet up.`);
     await notify(m.bUser, `🎉 Deal${terms}! You're connected with ${userLabel(ua)} — sort the details and meet up.`);
   }
@@ -397,7 +398,7 @@ export function createBot(token: string, store: Store): Bot {
     const cp = other(m, asker);
     const ci = (m.aUser === cp ? store.intent(m.aIntent) : store.intent(m.bIntent))?.intent;
     const context = ci
-      ? `wants to ${ci.kind === "seek" ? "buy" : ci.kind === "offer" ? "sell" : ci.kind} ${(ci.publicTags ?? ci.tags).join(", ")}${ci.valuation != null ? ` (around €${ci.valuation})` : ""}`
+      ? `wants to ${ci.kind === "seek" ? "buy" : ci.kind === "offer" ? "sell" : ci.kind} ${(ci.publicTags ?? ci.tags).join(", ")}${ci.valuation != null ? ` (around ${money(ci.valuation)})` : ""}`
       : item;
 
     if (isSim(cp)) {

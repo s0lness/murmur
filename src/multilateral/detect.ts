@@ -1,11 +1,13 @@
 import type { PrivateIntent } from "../core/intent";
+import { STOPWORDS } from "../core/stopwords";
 
 export interface Party { id: string; intent: PrivateIntent }
 
 const tags = (i: PrivateIntent) => (i.publicTags ?? i.tags).map((t) => t.toLowerCase());
 /** Word-level overlap — tolerant of the distiller's token drift, so "ps5:forza"
- *  and "forza", or "tickets" and "ticket" via "concert"/"friday", still connect. */
-const words = (xs: string[]) => new Set(xs.flatMap((t) => t.toLowerCase().split(/[^a-z0-9]+/)).filter((w) => w.length >= 3));
+ *  and "forza", or "tickets" and "ticket" via "concert"/"friday", still connect.
+ *  Stopwords ("used", "free") are dropped so they can't create false overlaps. */
+const words = (xs: string[]) => new Set(xs.flatMap((t) => t.toLowerCase().split(/[^a-z0-9]+/)).filter((w) => w.length >= 3 && !STOPWORDS.has(w)));
 const overlap = (a: string[], b: string[]) => {
   const wa = words(a);
   for (const w of words(b)) if (wa.has(w)) return true;

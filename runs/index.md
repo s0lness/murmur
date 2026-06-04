@@ -10,3 +10,8 @@
 2026-06-04T10:22:06.562Z N=30+norm+helpclaude-opus-4-7 — deals 7 [deal,deal,deal,deal,deal,deal,group], cleared 11/30, coverage 45%, groups 3, rings 0, fell 13
 2026-06-04T10:26:59.831Z N=30+norm+helpclaude-opus-4-7 — deals 7 [deal,deal,deal,deal,deal,deal,group], cleared 13/30, coverage 48%, groups 3, rings 0, fell 13
 2026-06-04T10:27:24.622Z N=30+norm+helpclaude-opus-4-7 — deals 7 [deal,deal,deal,deal,deal,deal,group], cleared 13/30, coverage 48%, groups 3, rings 0, fell 13
+2026-06-04T10:38:36.517Z N=30+norm+helpclaude-opus-4-7 — deals 9 [deal,deal,deal,deal,deal,deal,deal,deal,deal], cleared 14/30, coverage 43%, groups 0, rings 0, fell 5
+2026-06-04T10:42:36.304Z N=30+norm+helpclaude-opus-4-7 — deals 8 [deal,deal,deal,deal,deal,deal,deal,deal], cleared 14/30, coverage 37%, groups 0, rings 0, fell 4
+2026-06-04T10:43:48.341Z N=30+norm+helpclaude-opus-4-7 — deals 8 [deal,deal,deal,deal,deal,deal,deal,deal], cleared 14/30, coverage 37%, groups 0, rings 0, fell 4
+2026-06-04T10:43:49.861Z N=30+norm+helpclaude-opus-4-7 — deals 8 [deal,deal,deal,deal,deal,deal,deal,deal], cleared 14/30, coverage 37%, groups 0, rings 0, fell 4
+2026-06-04T10:44:06.622Z N=30+norm+helpclaude-opus-4-7 — deals 8 [deal,deal,deal,deal,deal,deal,deal,deal], cleared 14/30, coverage 37%, groups 0, rings 0, fell 4

@@ -124,3 +124,27 @@ Result: **11/30 cleared**, 7 deals (incl. a 4-person group buy), 45% coverage, s
 **Net:** the lab is now observable (dashboard) and the engine is ported to production. Two concrete product bugs to fix next — **currency normalization** (was actively losing a deal) and **bulk-seller demand-gating**. Rings remain a density story: worth a seeded-barter population or a much larger N to quantify, but they won't appear in friend-group-sized pools on their own.
 
 Dashboard: `node viewer/serve.mjs` → http://localhost:5050/fuzz.html, then `npm run fuzz 30 help norm watch`.
+
+---
+
+## Session 7 — 2026-06-04 · N=30 · fixed the two product bugs
+
+Fixed both bugs from Session 6, re-ran, and verified. Before → after (same 30 personas):
+
+| | before (S6) | after (S7) |
+|---|---|---|
+| cleared | 11/30 | **14/30** |
+| fell through | 13 | **4** |
+| spurious matches | yoga-mat blast (3) | **none** |
+| Steam Deck deal | **lost** (£/€ confusion) | **closes @ £400** |
+| prices shown | € (wrong) | **£** (consistent) |
+
+1. **Root cause of the bulk-seller "blast" = non-discriminative tokens, not bulk.** The distiller emits condition adjectives ("used", "free", "set-of-3") as matchable tags, and the matcher counted *any* shared token as a hit — so a yoga mat and an iPad "matched" on `used`, and qty=3 sprayed it to 3 seekers. **Fix:** `src/core/stopwords.ts` — a stoplist of condition/quantity/vague words, filtered out of `provides`/`accepts` in the solver and out of word-overlap in the multilateral detectors. Bulk was only the amplifier; killing the false overlap killed the blast. (Never stops item/brand names or sizes.)
+
+2. **Currency bug.** Personas budget in £, the IR-pricer emitted €, nothing normalized — the buyer balked at "€400" on a £400 deal. **Fix:** `src/core/currency.ts` (`SYMBOL`/`money`, configurable via `MURMUR_CURRENCY`, default £) used at every display point in the bot and lab; plus a distiller rule to store valuations as plain GBP integers, converting other currencies. The Steam Deck deal now closes.
+
+3. **Helper dedup (minor).** Added a `tried` set so the failover never re-surfaces a pair the deterministic phase already proposed-and-lost. (Note: the one remaining helper decline — Daniel↝Jack, hybrid offered for a road-bike seeker — is *correct* behaviour: a fuzzy substitute proposed with a question, the human declines. Not a duplicate.)
+
+**Verification:** typecheck + 16 tests green; two consecutive runs now **byte-identical** (reproducible — the one-off £370/9-deal pass was the cache warming after the prompt change; stable at 8 deals / 14 cleared / £240 surplus). Remaining 4 declines and 16 unmatched are all economically correct (genuine constraint mismatches / no counterpart). groups 0, rings 0 — this population has neither, as established.
+
+**Still open (not bugs, design):** `MURMUR_CURRENCY=€` for the French bot pilot would need the distiller's GBP base flipped too (currently hardcoded GBP, fine for the £ lab). Bulk-seller *legitimate* group-buys still want demand-gating polish, but the false blast is gone.

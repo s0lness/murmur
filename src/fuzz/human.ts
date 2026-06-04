@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { anthropic } from "../core/anthropic";
+import { money } from "../core/currency";
 import { modelId } from "../core/model";
 import { cached, cacheKey } from "../intake/cache";
 
@@ -44,7 +45,7 @@ export const decidePrice = (p: Who, item: string, price: number, side: "buy" | "
   ask<{ action: "approve" | "revise" | "abort"; newLimit: number | null; reason: string }>(
     PRICE_TOOL, HUMAN_SYS(p.brief, p.wants),
     side === "buy"
-      ? `You are the BUYER. A seller will let you BUY "${item}" for €${price} (you pay). Approve, revise (give your new limit), or abort?`
-      : `You are the SELLER. A buyer will PAY YOU €${price} for your "${item}" (you receive the money). Approve, revise (give your new limit), or abort?`,
+      ? `You are the BUYER. A seller will let you BUY "${item}" for ${money(price)} (you pay). Approve, revise (give your new limit), or abort?`
+      : `You are the SELLER. A buyer will PAY YOU ${money(price)} for your "${item}" (you receive the money). Approve, revise (give your new limit), or abort?`,
     "fuzz-price",
   );

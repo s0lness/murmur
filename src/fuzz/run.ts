@@ -1,5 +1,6 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { money } from "../core/currency";
 import { type PrivateIntent } from "../core/intent";
 import { loadDotenv } from "../intake/env";
 import { LLMDistiller } from "../intake/llmDistiller";
@@ -107,6 +108,8 @@ interface Deal { kind: string; who: string[]; detail: string }
 const deals: Deal[] = [];
 const declines: string[] = [];
 live.deals = deals; live.declines = declines; // share refs so ticks reflect live contents
+const tried = new Set<string>(); // name-pairs already proposed deterministically — don't let the helper re-surface them
+const pairKey = (a: string, b: string) => [a, b].sort().join("|");
 await tick("deterministic matching");
 
 // pairwise commerce: both must connect, then both approve the price
@@ -115,6 +118,7 @@ for (const t of settlement.trades) {
   const bI = intentById.get(t.buyer)!, sI = intentById.get(t.seller)!;
   const bP = personaOf.get(t.buyer)!, sP = personaOf.get(t.seller)!;
   if (bP === sP) continue;
+  tried.add(pairKey(bP.name, sP.name));
   const bConn = await decideMatch(bP, `Your agent found a seller offering "${item(sI)}". Connect?`);
   const sConn = await decideMatch(sP, `Your agent found a buyer who wants "${item(bI)}". Connect?`);
   if (!bConn.connect || !sConn.connect) {
@@ -126,8 +130,8 @@ for (const t of settlement.trades) {
   if (price == null) { deals.push({ kind: "deal", who: [bP.name, sP.name], detail: `${item(sI)} (no price)` }); await tick(); continue; }
   const bA = await decidePrice(bP, item(sI), price, "buy");
   const sA = await decidePrice(sP, item(sI), price, "sell");
-  if (bA.action === "approve" && sA.action === "approve") deals.push({ kind: "deal", who: [bP.name, sP.name], detail: `${item(sI)} @ €${price}` });
-  else declines.push(`${bP.name}⇄${sP.name} (${item(sI)} @ €${price}): ${bA.action}/${sA.action} — buyer:"${bA.reason}" seller:"${sA.reason}"`);
+  if (bA.action === "approve" && sA.action === "approve") deals.push({ kind: "deal", who: [bP.name, sP.name], detail: `${item(sI)} @ ${money(price)}` });
+  else declines.push(`${bP.name}⇄${sP.name} (${item(sI)} @ ${money(price)}): ${bA.action}/${sA.action} — buyer:"${bA.reason}" seller:"${sA.reason}"`);
   await tick();
 }
 
@@ -198,6 +202,7 @@ if (HELP) {
     if (t.kind !== "commerce") continue;
     const bP = personaOf.get(t.buyer)!, sP = personaOf.get(t.seller)!;
     if (bP === sP || cleared0.has(bP.name) || cleared0.has(sP.name)) continue;
+    if (tried.has(pairKey(bP.name, sP.name))) continue; // already proposed & declined deterministically
     const sI = intentById.get(t.seller)!;
     const q = (sI.tags ?? []).map(questionFor).find((x) => x) ?? "";
     if (!q && canon(item(sI)) === item(sI)) continue; // no fuzzy edge involved → not a helper recovery
