@@ -57,4 +57,29 @@ export const SCENARIOS: EvalScenario[] = [
     ],
     expect: { matches: [["seller", "buyer"]] },
   },
+  {
+    name: "cross-language-bike",
+    agents: [
+      { id: "seller", say: "je vends mon vélo de course, 150 euros" },
+      { id: "buyer", say: "looking for a second-hand road bike, up to 220" },
+    ],
+    expect: { matches: [["seller", "buyer"]] }, // distiller must normalize FR→EN tokens
+  },
+  {
+    name: "no-zopa-walk",
+    agents: [
+      { id: "seller", say: "selling my guitar, firm at 300" },
+      { id: "buyer", say: "want a guitar but only have 100 to spend" },
+    ],
+    expect: { noMatch: [["seller", "buyer"]] },
+  },
+  {
+    name: "second-bulk-group",
+    agents: [
+      { id: "seller", say: "selling 5 used Calculus 101 textbooks, 20 each" },
+      { id: "b1", say: "need the Calculus 101 textbook" },
+      { id: "b2", say: "looking for a calc 101 textbook" },
+    ],
+    expect: { groups: [["seller", "b1", "b2"]] },
+  },
 ];
