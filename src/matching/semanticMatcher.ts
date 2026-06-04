@@ -1,19 +1,24 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { z } from "zod";
 import { blur, type PrivateIntent } from "../core/intent";
 import { modelId } from "../core/model";
 import { record } from "../core/usage";
+import { score01 } from "../intake/schema";
 import { cached, cacheKey } from "../intake/cache";
 
-/** One verdict per candidate signal. */
-export interface Verdict {
-  signalId: string;
-  relevant: boolean;
-  score: number;
-  reason: string;
+/** One verdict per candidate signal. Parsed (not cast) so a malformed or
+ *  out-of-range `score` is clamped rather than trusted. */
+export const Verdict = z.object({
+  signalId: z.string(),
+  relevant: z.boolean(),
+  score: score01,
+  reason: z.string(),
   /** If a single missing detail decides a plausible match, a question to ask
    *  the user; "" otherwise. */
-  clarify: string;
-}
+  clarify: z.string(),
+});
+export type Verdict = z.infer<typeof Verdict>;
+const JudgeOutput = z.object({ matches: z.array(Verdict) });
 
 const JUDGE_TOOL: Anthropic.Tool = {
   name: "judge_relevance",
@@ -114,7 +119,7 @@ export class SemanticMatcher {
       record(response.usage);
       const block = response.content.find((b) => b.type === "tool_use");
       if (!block || block.type !== "tool_use") throw new Error("semantic matcher: no tool call");
-      return (block.input as { matches: Verdict[] }).matches;
+      return JudgeOutput.parse(block.input).matches;
     });
     return value;
   }
