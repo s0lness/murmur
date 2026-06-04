@@ -196,7 +196,9 @@ export function createBot(token: string, store: Store): Bot {
     if (ans) {
       awaitingAnswer.delete(ctx.from.id);
       await bot.api.sendMessage(ans.asker, `💬 The other party replied: ${ctx.message.text}`);
-      return ctx.reply("Passed it back. 👍");
+      await ctx.reply("Passed it back. 👍");
+      await refineFromAnswer(ctx.from.id, ans.question, ctx.message.text); // sharpen the broadcast
+      return;
     }
 
     // If they're answering a clarifying question, fold it into the message.
@@ -290,6 +292,26 @@ export function createBot(token: string, store: Store): Bot {
       await propose(e.seek, e.offer);
     }
     await scanMultiDeals();
+  }
+
+  /** A relayed answer often carries new detail ("yes, it's the OLED 256gb").
+   *  Feed it back through reconcile to SHARPEN the answerer's broadcast, then
+   *  re-settle — the agent negotiates *understanding*, the solver handles price. */
+  async function refineFromAnswer(userId: number, question: string, answer: string) {
+    const existing = store.intentsOf(userId).map((s) => ({
+      id: s.id, kind: s.intent.kind, domain: s.intent.domain,
+      tags: s.intent.publicTags ?? s.intent.tags,
+      valuation: s.intent.valuation ?? null, active: s.intent.active !== false,
+    }));
+    if (existing.length === 0) return;
+    const msg = `(Refining my own listing from a clarification) Someone asked me: "${question}". I answered: "${answer}". If this adds concrete detail to one of my items, update or replace that item; otherwise change nothing.`;
+    const { removeIds, updates, adds } = await distiller.reconcile(existing, "the user", msg);
+    if (removeIds.length === 0 && updates.length === 0 && adds.length === 0) return;
+    for (const id of removeIds) store.removeIntent(id);
+    for (const u of updates) store.updateIntent(u.id, u.valuation ?? undefined, u.active);
+    adds.forEach((i) => store.addIntent(userId, i));
+    await bot.api.sendMessage(userId, "✏️ I sharpened your listing with that detail and re-checked for matches.");
+    await settle();
   }
 
   async function propose(a: StoredIntent, b: StoredIntent) {
