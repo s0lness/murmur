@@ -30,12 +30,12 @@
   .head .t { font-weight:700; letter-spacing:.4px; }
   .head .c { color:var(--mut); font-size:12px; }
   .body { padding:10px 13px; display:flex; flex-direction:column; gap:7px; max-height:42vh; overflow:auto; }
-  .pop { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; max-height:none; }
-  .card { background:#10151d; border:1px solid var(--edge); border-radius:8px; padding:8px 9px; }
+  .pop { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:8px; max-height:none; overflow-x:hidden; }
+  .card { background:#10151d; border:1px solid var(--edge); border-radius:8px; padding:8px 9px; min-width:0; }
   .card .n { font-weight:700; font-size:12.5px; }
   .card .b { color:var(--mut); font-size:11px; margin:2px 0 6px; line-height:1.3; }
-  .chips { display:flex; flex-wrap:wrap; gap:4px; }
-  .chip { font-size:10.5px; padding:1px 6px; border-radius:9px; border:1px solid var(--edge); color:var(--mut); white-space:nowrap; }
+  .chips { display:flex; flex-wrap:wrap; gap:4px; min-width:0; }
+  .chip { font-size:10.5px; padding:1px 6px; border-radius:9px; border:1px solid var(--edge); color:var(--mut); max-width:100%; overflow-wrap:anywhere; }
   .chip.seek{ color:var(--blue); border-color:#1f3a5f; }
   .chip.offer{ color:var(--green); border-color:#1f4427; }
   .chip.swap,.chip.barter{ color:var(--purple); border-color:#3a2a5f; }
