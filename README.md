@@ -11,6 +11,12 @@ uses: payment, shipping, a handshake.
 > **[FINDINGS.md](FINDINGS.md)** (what we learned) · **[runs/log.md](runs/log.md)** (every
 > experiment + decision).
 
+![The murmur fuzz lab dashboard](docs/dashboard.png)
+
+*The fuzz lab: 30 LLM-driven "humans" pushed through the real pipeline. Left, the population
+and their distilled wants; right, the deals it closed and the helper's fuzzy-substitute edges
+("would a french press work instead of an espresso machine?"); top, a live token/cost meter.*
+
 ## The vision
 
 We carry endless low-grade wants - sell the couch before moving, swap apartments for June,
@@ -27,31 +33,30 @@ posting into the void.
 
 ## How it works
 
+Two people, each represented by their own agent, meeting over a shared pool. Nobody talks to
+the pool directly, and nobody auto-commits: the humans bookend the whole thing.
+
 ```
-  you ──"selling my road bike, ~$150, free till Sunday"──▶  your agent
-                                                                │
-                                                                │  distill  (LLM → structured intent)
-                                                                ▼
-                                                   PrivateIntent
-                                          { offer · bikes · [road, used] · $150 · region · window }
-                                                                │
-                                                                │  blur()   ← the privacy boundary
-                                                                ▼          (drop price, identity, exact loc)
-                                                  PublicSignal  "someone offers: road bike (bikes)"
-                                                                │
-                                                                │  broadcast to the pool
-                          ┌─────────────────────────────────────┴─────────────────────────────────┐
-                          ▼                                                                         ▼
-                 other agents' signals ───────▶   MATCH                                  your other wants
-                                          semantic pairs · group-buys · barter rings
-                                          (+ an LLM fuzzy-edge failover for near-substitutes)
-                                                                │
-                                                                │  price = midpoint of the
-                                                                ▼  fallback-bounded zone of agreement
-                                                          PROPOSE  ──▶  both sides Connect + Approve
-                                                                │
-                                                                ▼
-                                                      connect & settle in the real world
+   YOU                                                            THEM
+   "selling my road bike, ~$150"                  "want a cheap bike, under ~$120"
+        │                                                          │
+        ▼  your agent: distill (LLM) + blur()      their agent: distill + blur()  ▼
+   PublicSignal                                                    PublicSignal
+   category + tags, no price/name/exact-loc          category + tags, no price/name
+        │                                                          │
+        └──────────────────────────┬───────────────────────────────┘
+                                    ▼
+              ┌──────────────── the shared POOL ────────────────┐
+              │  MATCH   semantic pairs · group-buys ·          │
+              │          barter rings · LLM substitute failover │
+              │  PRICE   midpoint of the fallback-bounded zone  │
+              │          of agreement (individual-rational)     │
+              └───────────────────────┬─────────────────────────┘
+                                      │  proposes a fair deal
+        ┌──────────────────────────────┴──────────────────────────────┐
+        ▼                                                              ▼
+   you:  Connect?  Approve $?                     them:  Connect?  Approve $?
+        └──────────────► both confirm, then settle IRL ◄──────────────┘
 ```
 
 Step by step:
@@ -63,10 +68,10 @@ Step by step:
    It strips everything sensitive and emits only what's needed to *find* a match:
 
    ```
-   PrivateIntent { …everything: price, identity, exact constraints }
+   PrivateIntent  { kind, domain, tags, region, price, identity, exact constraints }
          │  blur()
          ▼
-   PublicSignal  { kind, domain, tags, region }     ← all that ever leaves your agent
+   PublicSignal   { kind, domain, tags, region }     ← all that ever leaves your agent
    ```
 
 3. **Match.** Signals meet in a shared pool. A semantic judge pairs complementary wants;
@@ -81,24 +86,6 @@ Step by step:
    then they're dropped into a direct connection to settle however they like.
 
 ## Who does what
-
-Two people, each represented by their own agent, meeting over a shared pool. Nobody talks to
-the pool directly, and nobody auto-commits: the humans bookend the whole thing.
-
-```
-     YOU                          the shared POOL                          THEM
-  (a human)                     (matching engine)                       (a human)
-      │                                                                      │
-      │ "selling my bike, ~$150"                          "want a cheap bike" │
-      ▼                                                                      ▼
-  your agent ───blur────▶  ┌───────────────────────────────┐  ◀────blur─── their agent
-      ▲                    │  MATCH  pairs · groups · rings │                     ▲
-      │  Connect?          │         (+ LLM substitute      │            Connect? │
-      │  Approve $?        │          failover)             │          Approve $? │
-      │                    │  PRICE  deterministic midpoint │                     │
-      │                    └───────────────────────────────┘                     │
-      └──────────────── you both confirm, then settle in the real world ─────────┘
-```
 
 | job | who | how |
 | --- | --- | --- |
@@ -119,6 +106,7 @@ the experiments; see [FINDINGS.md](FINDINGS.md).
 ## Run it
 
 Two entry points. Full guides in **[PILOT.md](PILOT.md)** and **[FINDINGS.md](FINDINGS.md)**.
+Needs **Node >= 20.19**.
 
 ```bash
 npm install
@@ -134,7 +122,7 @@ npm run view                # then open http://localhost:5050/fuzz.html to watch
 npm test           # deterministic matching/privacy tests
 ```
 
-Needs an `murmur/.env` (gitignored) with `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`,
+Needs a `murmur/.env` (gitignored) with `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`,
 `MURMUR_MODEL`, and `MURMUR_CURRENCY`. Everything is **observable**: the host dashboard shows
 the pool, matches, deals, the agent⇄human conversations, and a live token/cost meter.
 
