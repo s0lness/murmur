@@ -55,3 +55,28 @@ Tested finding #2 (does pool normalization unlock barter rings?) and verified th
 **Decision / next lever:** generalize `barterCycles` to derive edges from `offer`(≈have) / `seek`(≈want), not only explicit swaps — the group-buy ↔ barter unification. This would let commerce positions participate in cycle detection and surface latent multilateral structure. *Caveat for the live bot:* where liquidity exists, a 2-party commerce match (or money) usually dominates a ring; gate derived rings to cases with no simpler bilateral/coverage settlement, else they're noise. Not yet built — flagged as the highest-value engine change.
 
 Harness flags now: `npm run fuzz <N> [ring] [norm]`.
+
+---
+
+## Session 4 — 2026-06-04 · helper failover (LLM matchmaker on the residual)
+
+Built `src/solver/helper.ts` — an LLM matchmaker that runs **only on intents the deterministic solver left unmatched** and proposes fuzzy candidates (cross-representation barter, rings, near-substitutes) it structurally can't see. Proposals are **not settlements**: each carries per-participant legs + a clarifying question and must clear the same human gate. Flag `help`. Tested on N=20 organic and an N=8 planted lexical-gap ring (`cring`: PS5→bike→camera→PS5, where "games console"≠"ps5" by word overlap so `barterCycles` can't close it).
+
+**Findings:**
+
+1. **The human gate is a robust safety net (validated).** Across ~14 proposals over both runs, **0 bad proposals leaked** — every hallucinated/ill-fitting match was caught. Confirms "proposals, not settlements, behind a human confirm" is the right, safe design for a fuzzy failover.
+
+2. **On a realistic residual, recall yield is ~0 — and that's mostly correct.** N=20: 9 proposals, 0 recovered. The residual is dominated by **cash-preferring sellers** (Tom selling a bike to fund a Garmin; Beatrice downsizing for cash) and **orphan wants with no counterpart**. Barter proposals to a liquidity-preferring seller give them nothing they want → correctly rejected (Jevons: money dominates barter when the counterparty wants cash). A fuzzy failover cannot manufacture liquidity or counterparties.
+
+3. **Helper over-reached → tightened.** Early version invented capabilities ("furniture seller will help assemble", routed a wrong participant into a trade). Tightened the prompt to ground every leg in stated fields, require each participant *receive* a stated want, and treat an empty list as the correct default. Cut the obvious hallucinations.
+
+4. **Pure-LLM multi-party assembly is unreliable (key architectural finding).** On the planted `cring`, the helper's **recall succeeded** — it found the ring and bridged the lexical gap (understood PS5 ≈ games console, which `barterCycles` cannot). But it **assembled the legs wrong**: gave Jo a road bike when she wants a console, and conflated two bike-owners (Ivy vs Hannah) in the residual. LLMs are bad at the multi-hop bookkeeping of who-gives-what across near-duplicate items. 2-party fuzzy matches assemble fine; 3+-party rings scramble.
+
+**Decision / architecture:** don't have the LLM *build* the whole match. Split the labor the way everything else in murmur splits:
+- **LLM = fuzzy-edge oracle.** It emits semantic equivalences over residual tokens ("ps5 ≈ games console", "road bike ≈ commuter — with a confirm question"), augmenting the token graph. Good at equivalence, bad at bookkeeping.
+- **Deterministic `barterCycles`/solver = combinatorial engine.** It finds cycles/matches over the *augmented* graph. Reliable graph algorithm, no hallucinated legs.
+- **Human gate = confirm.** Unchanged.
+
+This makes the helper a *graph augmenter*, not a *match builder* — and folds the group-buy↔barter unification in naturally (the same augmented graph feeds both). Highest-value next build. The current pure-LLM helper stays as a baseline to measure the hybrid against.
+
+Harness flags now: `npm run fuzz <N> [ring] [cring] [norm] [help]`.

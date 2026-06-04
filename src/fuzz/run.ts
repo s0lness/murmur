@@ -5,6 +5,7 @@ import { loadDotenv } from "../intake/env";
 import { LLMDistiller } from "../intake/llmDistiller";
 import { normalizePool } from "../eval/normalize";
 import { barterCycles, groupBuys, type Party } from "../multilateral/detect";
+import { proposeFuzzy, type ResidualIntent } from "../solver/helper";
 import { score, solve } from "../solver/solve";
 import { decideMatch, decidePrice } from "./human";
 import { makePersonas, type Persona } from "./persona";
@@ -14,13 +15,23 @@ if (!process.env.ANTHROPIC_API_KEY) { console.error("ANTHROPIC_API_KEY not set."
 
 const N = Number(process.argv[2]) || 12;
 const NORM = process.argv.includes("norm"); // canonicalize the pool (domains/tokens) before detection
+const HELP = process.argv.includes("help"); // run the LLM matchmaker failover on the residual
 const PLANT = process.argv.includes("ring"); // inject a deterministic 3-way swap cycle to exercise the ring path
+const CRING = process.argv.includes("cring"); // inject a ring that closes semantically but breaks on one lexical gap
 
 // A→B→C→A: Ada wants what Ben has, Ben wants what Cleo has, Cleo wants what Ada has.
 const RING: Persona[] = [
   { id: "r1", name: "Ada Plant", brief: "Decisive, just wants to swap and be done.", wants: ["Swap: I have a mountain bike, want a sewing machine — straight trade"] },
   { id: "r2", name: "Ben Plant", brief: "Easy-going, happy to barter.", wants: ["Swap: I have a sewing machine, want an acoustic guitar — straight trade"] },
   { id: "r3", name: "Cleo Plant", brief: "Keen swapper, no cash involved.", wants: ["Swap: I have an acoustic guitar, want a mountain bike — straight trade"] },
+];
+
+// No-cash ring whose loop closes (PS5→bike→camera→PS5) but breaks deterministically:
+// "games console" ≠ "ps5" by word overlap, so barterCycles can't see it. The helper can.
+const SWAP_RING: Persona[] = [
+  { id: "s1", name: "Gus Trade", brief: "Only swaps, never takes cash.", wants: ["I want to swap my PS5 with 2 controllers for a decent commuter bike — trade only, not selling for cash"] },
+  { id: "s2", name: "Ivy Trade", brief: "Trades, never sells.", wants: ["Swap my road bike for a good camera — happy to trade, not after cash"] },
+  { id: "s3", name: "Jo Trade", brief: "Barter type, no money involved.", wants: ["I'll trade my mirrorless camera for a games console for the kids — swap only"] },
 ];
 const distiller = new LLMDistiller();
 const item = (i: PrivateIntent) => (i.publicTags ?? i.tags).slice(0, 3).join(" ");
@@ -33,7 +44,7 @@ const irPrice = (b: PrivateIntent, s: PrivateIntent): number | null => {
 
 console.log(`\n▶ murmur fuzz — ${N} LLM-humans on the real pipeline (model ${process.env.MURMUR_MODEL ?? "haiku-4-5"})\n`);
 
-const personas = [...(await makePersonas(N)), ...(PLANT ? RING : [])];
+const personas = [...(await makePersonas(N)), ...(PLANT ? RING : []), ...(CRING ? SWAP_RING : [])];
 const POP = personas.length;
 const personaOf = new Map<string, Persona>(); // intentId → persona
 const all: PrivateIntent[] = [];
@@ -116,6 +127,29 @@ for (const r of rings) {
   else declines.push(`ring ${members.map((m) => m.name).join("→")}: someone passed`);
 }
 
+// ── helper failover: LLM matchmaker recovers fuzzy matches from the residual ──
+let helperStats = "";
+if (HELP) {
+  const cleared0 = new Set(deals.flatMap((d) => d.who));
+  const residual: ResidualIntent[] = parties
+    .filter((p) => !cleared0.has(personaOf.get(p.id)!.name))
+    .map((p) => ({ id: p.id, who: personaOf.get(p.id)!.name, kind: p.intent.kind, item: item(p.intent), have: p.intent.have ?? [], want: p.intent.want ?? [] }));
+  const proposals = await proposeFuzzy(residual);
+  let recovered = 0;
+  for (const pr of proposals) {
+    const seen = new Set<string>();
+    const legs = pr.legs.map((l) => ({ leg: l, p: personaOf.get(l.id) }))
+      .filter((x): x is { leg: typeof x.leg; p: Persona } => !!x.p && !seen.has(x.p.name) && (seen.add(x.p.name), true));
+    if (legs.length < 2) continue;
+    const votes = await Promise.all(legs.map(({ leg, p }) =>
+      decideMatch(p, `Your agent found a match the main solver missed: you give "${leg.gives}" and receive "${leg.gets}". ${pr.question} Interested?`)));
+    const who = legs.map((x) => x.p.name);
+    if (votes.every((v) => v.connect)) { deals.push({ kind: `~${pr.kind}`, who, detail: `${pr.summary} (helper, conf ${pr.confidence})` }); recovered++; }
+    else { const i = votes.findIndex((v) => !v.connect); declines.push(`helper ${pr.kind} (${who.join(",")}): ${legs[i]?.p.name} passed — "${votes[i]?.reason}"`); }
+  }
+  helperStats = `  helper: ${proposals.length} proposals → ${recovered} recovered (${proposals.length ? Math.round((recovered / proposals.length) * 100) : 0}% accepted)`;
+}
+
 // ── report ──
 const clearedPeople = new Set(deals.flatMap((d) => d.who));
 console.log(`\n─ deals (${deals.length}) ─────────────────────────────────`);
@@ -131,10 +165,11 @@ console.log(`\n─ metrics ─────────────────�
 console.log(`  people with a deal   ${clearedPeople.size}/${POP}`);
 console.log(`  solver coverage      ${Math.round(sc.coverage * 100)}% of intents   surplus ${sc.surplus}`);
 console.log(`  groups ${groups.length}   rings ${rings.length}`);
+if (helperStats) console.log(helperStats);
 
 // ── run log ── compact one-liner to a raw index; curated findings live in log.md
 mkdirSync(join(process.cwd(), "runs"), { recursive: true });
 const stamp = new Date().toISOString();
 appendFileSync(join(process.cwd(), "runs", "index.md"),
-  `${stamp} N=${POP}${PLANT ? "+ring" : ""}${NORM ? "+norm" : ""} ${process.env.MURMUR_MODEL ?? "haiku-4-5"} — deals ${deals.length} [${deals.map((d) => d.kind).join(",") || "none"}], cleared ${clearedPeople.size}/${POP}, coverage ${Math.round(sc.coverage * 100)}%, groups ${groups.length}, rings ${rings.length}, fell ${declines.length}\n`);
+  `${stamp} N=${POP}${PLANT ? "+ring" : ""}${CRING ? "+cring" : ""}${NORM ? "+norm" : ""}${HELP ? "+help" : ""}${process.env.MURMUR_MODEL ?? "haiku-4-5"} — deals ${deals.length} [${deals.map((d) => d.kind).join(",") || "none"}], cleared ${clearedPeople.size}/${POP}, coverage ${Math.round(sc.coverage * 100)}%, groups ${groups.length}, rings ${rings.length}, fell ${declines.length}\n`);
 console.log(`\n  logged to runs/index.md\n`);
