@@ -23,6 +23,7 @@
     "measure": "tsx src/solver/measure.ts",
     "bargaining": "tsx src/research/bargaining.ts",
     "eval": "tsx src/eval/run.ts",
+    "fuzz": "tsx src/fuzz/run.ts",
     "view": "node viewer/serve.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

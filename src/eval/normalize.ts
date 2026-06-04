@@ -1,8 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import { anthropic } from "../core/anthropic";
 import { modelId } from "../core/model";
 import { cached, cacheKey } from "../intake/cache";
-
-const client = new Anthropic();
 
 export interface NormIn { id: string; kind: string; domain: string; tags: string[]; have: string[]; want: string[] }
 export interface NormOut { id: string; domain: string; tags: string[]; have: string[]; want: string[] }
@@ -45,7 +44,7 @@ Keep meaning identical; do not invent or drop items. Return every item. Call nor
 export async function normalizePool(items: NormIn[]): Promise<Map<string, NormOut>> {
   const key = cacheKey("normalize-v1", modelId(), items);
   const { value } = await cached<NormOut[]>(key, async () => {
-    const res = await client.messages.create({
+    const res = await anthropic().messages.create({
       model: modelId(), max_tokens: 1500,
       system: [{ type: "text", text: SYS, cache_control: { type: "ephemeral" } }],
       tools: [TOOL], tool_choice: { type: "tool", name: "normalize_pool" },
