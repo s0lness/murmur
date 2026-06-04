@@ -1,5 +1,5 @@
 /** Append-only, replayable record of everything that happened in a sim run.
- *  Metrics derive entirely from this — nothing is measured inline. */
+ *  Metrics derive entirely from this - nothing is measured inline. */
 export type Event =
   | { t: number; type: "signal_published"; by: string; signalId: string; domain: string; kind: string }
   | { t: number; type: "interest"; by: string; towards: string; signalId: string; score: number }

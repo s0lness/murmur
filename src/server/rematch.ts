@@ -2,7 +2,7 @@ import { loadDotenv } from "../intake/env";
 import { matchAgainstPool } from "./commons";
 import { Store } from "./store";
 
-// Re-runs matching over every intent already in murmur.db.json. Read-only —
+// Re-runs matching over every intent already in murmur.db.json. Read-only -
 // safe to run alongside the live bot. Doubles as the basis for a /rematch
 // rescan so dormant intents (arrived with no complement, or during a crash)
 // can still find each other.
@@ -22,4 +22,4 @@ for (const si of pool) {
     console.log(`         ${h.userId}/${h.intent.kind} ${h.intent.domain} [${(h.intent.publicTags ?? h.intent.tags).join(",")}]\n`);
   }
 }
-console.log(`done — ${seen.size} match(es)`);
+console.log(`done - ${seen.size} match(es)`);

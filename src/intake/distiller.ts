@@ -8,8 +8,8 @@ export interface PersonaUtterances {
   utterances: string[];
 }
 
-/** The distiller turns words into structured intents. M1 ships an LLM impl;
- *  a passthrough impl keeps the hand-authored M0 scenarios/tests working. */
+/** The distiller turns words into structured intents. An LLM impl is the real
+ *  one; a passthrough impl keeps the hand-authored scenarios/tests working. */
 export interface Distiller {
   distill(input: PersonaUtterances): Promise<PrivateIntent[]>;
 }

@@ -14,7 +14,7 @@ if (!build) {
 const world = buildWorld(build());
 world.run();
 
-/** Includes the agents' *private* intents — the viewer hides the sensitive
+/** Includes the agents' *private* intents - the viewer hides the sensitive
  *  fields unless you flip on god mode, which is the whole point of the demo. */
 const recording = {
   scenario: name,

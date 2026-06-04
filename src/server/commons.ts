@@ -10,7 +10,7 @@ const matcher = new SemanticMatcher();
 const SHORTLIST = 15;
 
 /**
- * Cheap structural prefilter — the "solver's first pass". Keeps candidates in
+ * Cheap structural prefilter - the "solver's first pass". Keeps candidates in
  * the same domain (the distiller's semantic bucket) or with any tag overlap,
  * then ranks and caps. This is what keeps semantic matching affordable as the
  * pool grows: the LLM only judges a shortlist, never the whole room.

@@ -15,9 +15,9 @@ console.log(`  etiquette: "${room.rulesOfTheRoom()}"\n`);
 const good = room.join({ agentId: "good", trustScore: 0.8 });
 console.log(`good (trust .8) join: ${good.ok ? "admitted" : good.reason}`);
 
-// Untrusted agent — bounced at the door.
+// Untrusted agent - bounced at the door.
 const stranger = room.join({ agentId: "stranger", trustScore: 0.1 });
-console.log(`stranger (trust .1) join: ${stranger.ok ? "admitted" : "REFUSED — " + stranger.reason}`);
+console.log(`stranger (trust .1) join: ${stranger.ok ? "admitted" : "REFUSED - " + stranger.reason}`);
 
 // A member who never read the etiquette and misbehaves.
 const spammer = room.join({ agentId: "spammer", trustScore: 0.6 });

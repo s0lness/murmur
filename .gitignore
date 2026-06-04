@@ -8,3 +8,4 @@ viewer/pipeline.js
 .env
 .cache/
 murmur.db.json
+viewer/fuzz-live.json

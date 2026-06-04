@@ -72,13 +72,13 @@ export const ANSWER_TOOL: Anthropic.Tool = {
   },
 };
 
-/** JSON Schema for one intent — shared by both tools. additionalProperties:false
+/** JSON Schema for one intent - shared by both tools. additionalProperties:false
  *  and every key in `required` (nullable via type union, never optional). */
 const INTENT_ITEM = {
   type: "object",
   additionalProperties: false,
   properties: {
-    kind: { type: "string", enum: ["seek", "offer", "swap", "barter"], description: "Always one of these four — NOT a domain prefix like 'social'." },
+    kind: { type: "string", enum: ["seek", "offer", "swap", "barter"], description: "Always one of these four - NOT a domain prefix like 'social'." },
     domain: { type: "string", description: "A dotted taxonomy node, e.g. goods.games" },
     tags: { type: "array", items: { type: "string" } },
     publicTags: { type: "array", items: { type: "string" } },

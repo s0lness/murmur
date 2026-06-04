@@ -8,7 +8,7 @@ export type Kind = z.infer<typeof Kind>;
 export const Window = z.object({ from: z.number(), to: z.number() });
 export type Window = z.infer<typeof Window>;
 
-/** The blurred, public face of an intent — this is all that hits the gossip bus.
+/** The blurred, public face of an intent - this is all that hits the gossip bus.
  *  Deliberately omits price, identity, and exact constraints. */
 export const PublicSignal = z.object({
   id: z.string(),
@@ -34,10 +34,10 @@ export interface PrivateIntent {
   trustGate?: number;
   /** Commerce: buyer = max willing to pay; seller = min acceptable (reservation). */
   valuation?: number;
-  /** The user's best alternative elsewhere (e.g. marketplace price) — a deal must
+  /** The user's best alternative elsewhere (e.g. marketplace price) - a deal must
    *  beat this (individual rationality). */
   fallback?: number;
-  /** Other things they'd also accept ("a Vita or a Miyoo") — widens the solution space. */
+  /** Other things they'd also accept ("a Vita or a Miyoo") - widens the solution space. */
   substitutes?: string[];
   /** How many units (for bulk / group settlement). Defaults to 1. */
   qty?: number;
@@ -47,7 +47,7 @@ export interface PrivateIntent {
   /** Tags safe to expose publicly; defaults to `tags` when omitted. */
   publicTags?: string[];
 
-  // ── Provenance (set by the distiller in M1; absent for hand-authored intents) ──
+  // ── Provenance (set by the distiller; absent for hand-authored intents) ──
   /** The raw user utterance this intent was distilled from. */
   source?: string;
   /** Distiller's confidence this is a real, actionable intent (0–1). */
@@ -60,8 +60,8 @@ export interface PrivateIntent {
 
 /**
  * The privacy boundary. Derives a blurred public signal from a private intent.
- * Everything sensitive — price, identity, exact constraints — stops here.
- * Later milestones graduate this from cleartext tags to bloom filters / PSI.
+ * Everything sensitive - price, identity, exact constraints - stops here.
+ * Future work graduates this from cleartext tags to bloom filters / PSI.
  */
 export function blur(intent: PrivateIntent, pseudonymId: string): PublicSignal {
   return {

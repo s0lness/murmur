@@ -33,13 +33,13 @@ export class Agent {
     this.bus.onSignal((s) => this.onSignal(s));
   }
 
-  /** God's-eye accessor for metrics only — never used in the agent loop. */
+  /** God's-eye accessor for metrics only - never used in the agent loop. */
   getIntents(): readonly PrivateIntent[] {
     return this.intents;
   }
 
   /** Broadcast a blurred signal for each of my *active* intents.
-   *  Half-formed wants (active === false) are held back — not broadcast — until
+   *  Half-formed wants (active === false) are held back - not broadcast - until
    *  some trigger promotes them. That restraint is the anti-spam property. */
   announce(): void {
     for (const intent of this.intents) {
@@ -156,7 +156,7 @@ export class Agent {
     this.send(session, reply);
 
     if (reply.type === "accept") {
-      // I accepted their offer (m.body) — record the agreed terms.
+      // I accepted their offer (m.body) - record the agreed terms.
       session.closed = true;
       this.ctx.log.append({
         t: this.ctx.now(),

@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { PrivateIntent } from "../core/intent";
 import { modelId } from "../core/model";
+import { record } from "../core/usage";
 import { cached, cacheKey } from "./cache";
 import type { Distiller, PersonaUtterances } from "./distiller";
 import { SYSTEM_PROMPT, SYSTEM_PROMPT_ANSWER, SYSTEM_PROMPT_RECONCILE, SYSTEM_PROMPT_ROUTER } from "./prompt";
@@ -45,7 +46,9 @@ export class LLMDistiller implements Distiller {
         tool_choice: { type: "tool", name: EMIT_INTENTS_TOOL.name },
         messages: [{ role: "user", content: `The user (${input.persona}) said:\n${userText}` }],
       });
-      const block = response.content.find((b) => b.type === "tool_use");
+      record(response.usage);
+      record(response.usage);
+    const block = response.content.find((b) => b.type === "tool_use");
       if (!block || block.type !== "tool_use") {
         throw new Error(`distiller: model did not call ${EMIT_INTENTS_TOOL.name}`);
       }
@@ -66,6 +69,7 @@ export class LLMDistiller implements Distiller {
       tool_choice: { type: "tool", name: ANSWER_TOOL.name },
       messages: [{ role: "user", content: `Your user: ${userContext}\n\nThe other party asks: "${question}"` }],
     });
+    record(response.usage);
     const block = response.content.find((b) => b.type === "tool_use");
     if (!block || block.type !== "tool_use") throw new Error("answer: no tool call");
     return AnswerOutput.parse(block.input);
@@ -81,6 +85,7 @@ export class LLMDistiller implements Distiller {
       tool_choice: { type: "tool", name: ROUTE_TOOL.name },
       messages: [{ role: "user", content: `Active match: ${matchSummary}\n\nMessage: "${message}"` }],
     });
+    record(response.usage);
     const block = response.content.find((b) => b.type === "tool_use");
     if (!block || block.type !== "tool_use") throw new Error("route: no tool call");
     return RouteOutput.parse(block.input);
@@ -88,7 +93,7 @@ export class LLMDistiller implements Distiller {
 
   /**
    * Reconcile a new message against the user's standing portfolio: returns
-   * intents to remove, updates, and brand-new adds — so corrections replace
+   * intents to remove, updates, and brand-new adds - so corrections replace
    * instead of piling up. Not cached (it's interactive, per-user state).
    */
   async reconcile(
@@ -107,6 +112,7 @@ export class LLMDistiller implements Distiller {
         content: `Current intents (JSON):\n${JSON.stringify(existing)}\n\nNew message from ${persona}: "${utterance}"`,
       }],
     });
+    record(response.usage);
     const block = response.content.find((b) => b.type === "tool_use");
     if (!block || block.type !== "tool_use") throw new Error("reconcile: no tool call");
     const out = ReconcileOutput.parse(block.input);

@@ -14,7 +14,7 @@ export interface Metrics {
 }
 
 /**
- * Everything is derived from the event log — "did serendipity actually happen"
+ * Everything is derived from the event log - "did serendipity actually happen"
  * is not eyeball-able, so the rig measures it. Surplus is computed from a
  * god's-eye view of both parties' reserves (impossible for the agents to know).
  */

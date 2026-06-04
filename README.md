@@ -1,136 +1,152 @@
 # murmur
 
-An **ambient-intent layer** for agents. Each agent keeps private wants, broadcasts a
-*blurred* public signal (category, tags, region — no price, no identity), listens for
-complementary signals, and when something matches, drops into a **private negotiation**.
-Settlement falls back to whatever the real world uses (payment, shipping, a handshake).
+**An ambient-intent layer for agents.** You tell your agent what you want in plain words. It
+holds that want quietly, broadcasts only a *blur* (category + tags - never price, name, or
+exact location), and when it finds a complementary want somewhere else it matches you
+privately and proposes a fair deal. Settlement falls back to whatever the real world already
+uses: payment, shipping, a handshake.
 
-It's the broader sibling of [clawlist](https://github.com/s0lness/clawlist): clawlist was
-transport-first and commerce-shaped; murmur is **intent-first** and domain-agnostic — swaps,
-travel overlaps, intros, tiny labor, not just buy/sell.
+> **Where this is now:** a live Telegram pilot (`@mmmmurmur_bot`) plus an LLM-driven fuzz lab
+> that stress-tests the whole pipeline. Jump to **[PILOT.md](PILOT.md)** (run the bot) ·
+> **[FINDINGS.md](FINDINGS.md)** (what we learned) · **[runs/log.md](runs/log.md)** (every
+> experiment + decision).
 
-## Vision
+## The vision
 
-We have endless low-grade wants — sell the couch before moving, swap apartments for June,
-find the one person at an event who cares about the same weird thing — that never surface
-because the cost of expressing them (phrase it, post it, filter the inbound, hold it in your
-head) is too high. So the long tail dies.
+We carry endless low-grade wants - sell the couch before moving, swap apartments for June,
+find the one person at an event who cares about the same weird thing - that never surface,
+because the cost of expressing each one (phrase it, post it, filter the inbound, keep it in
+your head) is higher than the want is worth. So the long tail dies in your head.
 
-Agents change that: they can hold your half-formed wants in the background and quietly let
-them find each other. murmur is the layer where that happens — **user-owned intents that can
-prove enough to match without dumping your private life into a marketplace.** Your agent
-distills your messy words into structured intents, broadcasts only a *blur*, negotiates
-privately, and falls back to normal payment/shipping to settle. The bet: expressive, private,
-agent-to-agent intent commerce beats posting into the void.
+Agents change the economics. They can hold your half-formed wants in the background and
+quietly let them find each other - **user-owned intents that prove just enough to match
+without dumping your private life into a marketplace.** Your agent distills your messy words
+into structured intent, broadcasts only a blur, negotiates privately, and hands you a deal to
+close in the real world. The bet: expressive, private, agent-to-agent intent commerce beats
+posting into the void.
 
-Two interaction modes, deliberately:
-- **Active venues** — agents join *rooms* with a **charter** (rules of the floor: who's
-  admitted, what's postable, how you negotiate). Soft norms are LLM etiquette; hard limits
-  (trust, schema, rate) are machine-enforced, so agents that won't behave still get reined in.
-- **Quiet serendipity** — half-formed/ambient wants that aren't broadcast at all, but are
-  privately matchable across your web-of-trust. Here the trust graph *is* the charter.
+## How it works
 
-## Why this shape
+```
+  you ──"selling my road bike, ~$150, free till Sunday"──▶  your agent
+                                                                │
+                                                                │  distill  (LLM → structured intent)
+                                                                ▼
+                                                   PrivateIntent
+                                          { offer · bikes · [road, used] · $150 · region · window }
+                                                                │
+                                                                │  blur()   ← the privacy boundary
+                                                                ▼          (drop price, identity, exact loc)
+                                                  PublicSignal  "someone offers: road bike (bikes)"
+                                                                │
+                                                                │  broadcast to the pool
+                          ┌─────────────────────────────────────┴─────────────────────────────────┐
+                          ▼                                                                         ▼
+                 other agents' signals ───────▶   MATCH                                  your other wants
+                                          semantic pairs · group-buys · barter rings
+                                          (+ an LLM fuzzy-edge failover for near-substitutes)
+                                                                │
+                                                                │  price = midpoint of the
+                                                                ▼  fallback-bounded zone of agreement
+                                                          PROPOSE  ──▶  both sides Connect + Approve
+                                                                │
+                                                                ▼
+                                                      connect & settle in the real world
+```
 
-Three things clawlist fused, pulled apart so each can move independently:
+Step by step:
 
-| layer | murmur's job | commodity? |
+1. **Distill.** Your agent reads what you *said* - messy, half-formed - and turns it into a
+   structured `PrivateIntent`: kind (seek / offer / swap), category, tags, a private reserve
+   price, region, and a freshness window. Tentative wants are held back, not broadcast.
+2. **Blur.** One function, [`blur()`](src/core/intent.ts), is the entire public/private split.
+   It strips everything sensitive and emits only what's needed to *find* a match:
+
+   ```
+   PrivateIntent { …everything: price, identity, exact constraints }
+         │  blur()
+         ▼
+   PublicSignal  { kind, domain, tags, region }     ← all that ever leaves your agent
+   ```
+
+3. **Match.** Signals meet in a shared pool. A semantic judge pairs complementary wants;
+   detectors find **group-buys** (one bulk offer, many buyers) and **barter rings** (A wants
+   what B has, B what C has, C what A has). When the keyword matcher misses a real
+   substitute, an LLM proposes the missing equivalence and the deterministic solver closes
+   the match over it.
+4. **Price.** The agent does *not* haggle (live LLM bargaining leaks information and misses
+   narrow deals). It proposes the **midpoint of the fallback-bounded zone of agreement** -
+   individual-rational by construction, so a deal always beats each side's outside option.
+5. **Confirm & settle.** Nothing auto-executes. Both humans Connect, then Approve the price;
+   then they're dropped into a direct connection to settle however they like.
+
+## Who does what
+
+Two people, each represented by their own agent, meeting over a shared pool. Nobody talks to
+the pool directly, and nobody auto-commits: the humans bookend the whole thing.
+
+```
+     YOU                          the shared POOL                          THEM
+  (a human)                     (matching engine)                       (a human)
+      │                                                                      │
+      │ "selling my bike, ~$150"                          "want a cheap bike" │
+      ▼                                                                      ▼
+  your agent ───blur────▶  ┌───────────────────────────────┐  ◀────blur─── their agent
+      ▲                    │  MATCH  pairs · groups · rings │                     ▲
+      │  Connect?          │         (+ LLM substitute      │            Connect? │
+      │  Approve $?        │          failover)             │          Approve $? │
+      │                    │  PRICE  deterministic midpoint │                     │
+      │                    └───────────────────────────────┘                     │
+      └──────────────── you both confirm, then settle in the real world ─────────┘
+```
+
+| job | who | how |
 | --- | --- | --- |
-| **intent** | express a blurred want, match it privately | ← the hard, novel part |
-| **transport** | carry gossip + private DMs | yes (Matrix later) |
-| **settlement** | pay / ship / shake hands | yes (fall back to anything) |
+| say what you want, in plain words | **you** (human) | a chat message |
+| distill words into a structured intent | **your agent** | LLM, where judgement is needed |
+| blur it, broadcast only what's safe | **your agent** | `blur()`, deterministic |
+| find matches across the pool, set a fair price | **the engine** | deterministic, IR-safe |
+| propose a fuzzy substitute the keyword matcher missed | **LLM oracle** | "would a hybrid work?" |
+| Connect, Approve the price, the final yes | **you** (the gate) | nothing auto-executes |
+| pay / ship / meet up | **both humans** | in the real world |
 
-The center of gravity is the `Intent` model and the **matching ladder**. Transport and
-settlement are adapters behind interfaces.
-
-## The privacy boundary
-
-One function, [`blur()`](src/core/intent.ts), is the entire public/private split:
-
-```
-PrivateIntent { ...everything, price, identity, exact constraints }
-      │  blur()
-      ▼
-PublicSignal  { kind, domain, tags, region, window, trustGate }   ← all that's broadcast
-```
-
-Today `blur()` emits cleartext tags. That's **rung 1** of a ladder it climbs later:
-`cleartext → bloom-filter overlap → PSI → MPC/FHE scoring`. The interface never changes.
-
-## Architecture (M0)
-
-```
-core/        intent.ts (schema + blur)  identity.ts (pseudonyms + trust stub)  events.ts  ctx.ts
-transport/   bus.ts (interface)  memoryBus.ts (in-proc)        ← matrixBus.ts is M3
-matching/    matcher.ts (ladder rung 1: complement + region + tag overlap)
-negotiate/   protocol.ts (propose/counter/accept/reject/withdraw + sessions)
-agent/       agent.ts (perceive→match→negotiate→settle)  brain.ts  ruleBrain.ts   ← llmBrain.ts is M1
-sim/         world.ts (clock + queue + bus)  build.ts  metrics.ts  run.ts
-scenarios/   switch-sale.ts  apartment-swap.ts
-```
-
-Everything is **god's-eye observable**: metrics (match precision, spam ratio, surplus,
-time-to-match) derive entirely from an append-only event log, because "did serendipity
-actually happen" can't be eyeballed.
+The pattern under all of it: **the LLM is a preference oracle** (express, refine, recall),
+**the deterministic engine is the combinatorial core** (match, price, find cycles, individual-
+rational by construction), and **the human is the gate** (confirms, and rejects bad
+suggestions at zero modeling cost). That split is the thing that kept proving itself across
+the experiments; see [FINDINGS.md](FINDINGS.md).
 
 ## Run it
 
+Two entry points. Full guides in **[PILOT.md](PILOT.md)** and **[FINDINGS.md](FINDINGS.md)**.
+
 ```bash
 npm install
-npm run switch     # the Nintendo Switch case
-npm run swap       # apartment swaps — proves it generalizes past commerce
-npm test           # smoke tests
+
+# the live bot (Telegram pilot) - distill → blur → match → price → connect
+npm run smoke      # verify it wires up (no Telegram connection)
+npm run server     # start the bot + host dashboard on http://localhost:4319
+
+# the fuzz lab - an LLM plays each human; the real pipeline is the agent
+npm run fuzz 30 help        # 30 agents through the whole pipeline
+npm run view                # then open http://localhost:5050/fuzz.html to watch it
+
+npm test           # deterministic matching/privacy tests
 ```
 
-### M1 — distillation (words → intents)
+Needs an `murmur/.env` (gitignored) with `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`,
+`MURMUR_MODEL`, and `MURMUR_CURRENCY`. Everything is **observable**: the host dashboard shows
+the pool, matches, deals, the agent⇄human conversations, and a live token/cost meter.
 
-The front door: an agent reads what its user *said* (messy, half-formed natural
-language) and distills it into structured `PrivateIntent`s — picking the domain,
-extracting tags, inferring region, deciding the public/private split, and holding
-back half-formed wants. Then the *existing* M0 sim runs on the result, so it's an
-end-to-end test: **natural language in on both ends → matched deal out**, with no
-human structuring the data.
+## Future exploration
 
-```bash
-$env:ANTHROPIC_API_KEY = "sk-ant-..."   # or put it in murmur/.env (gitignored)
-npm run distill -- ambient-market        # stage 1: clean single utterances
-npm run distill -- ambient-journal       # stage 2: messy journals w/ latent wants
-npm run view                             # replay it — the viewer shows the funnel
-```
-
-The distiller uses `claude-opus-4-8` via forced tool-use (Zod-validated), with the
-big taxonomy/split-rules system prompt cached (`cache_control` on the system block).
-In the viewer, each agent card now shows the full provenance funnel: **what the user
-said → what was distilled** (with confidence, and ⏸ held-back ambient wants greyed
-out) **→ what got broadcast**, with the private reserve + rationale under god mode.
-
-### Watch it happen
-
-The CLI prints final metrics; the **viewer** lets you replay a run tick by tick.
-
-```bash
-npm run record -- switch-sale   # writes viewer/recording.js
-npm run view                    # static server on http://localhost:5050
-```
-
-Open <http://localhost:5050>. You get a playback scrubber, a **gossip feed** (the
-public ambient layer — who broadcast what, who got interested), and **negotiations**
-rendered as threaded chats that fill in as ticks advance. Toggle **god mode** 👁 to
-reveal the hidden reserve prices behind each blurred signal and the ZOPA of every
-deal — so you can see *why* one converged and another died.
-
-`switch-sale` should close the FR Switch and US PS5 deals, fail the lowball buyer (no
-zone of agreement), and never even contact the iPhone noise. `apartment-swap` should
-close exactly one reciprocal swap and fail the rest — the double-coincidence-of-wants
-problem, which is exactly the thing agents are supposed to be good at and humans hate.
-
-## Roadmap
-
-- **M0 — the loop works.** ✅ in-memory bus, rule brains, 2 scenarios, metrics + replay.
-- **M1 — distillation.** ✅ `LLMDistiller` (Anthropic SDK, prompt-cached, Zod-validated):
-  natural-language utterances → structured intents, with the public/private split and
-  held-back ambient wants. Negotiation stays rule-based underneath (next: `LLMBrain`).
-- **M2 — trust.** Signed vouch graph, `trustGate` enforcement, rotating pseudonyms.
-- **M3 — real transport.** `matrixBus.ts` behind the same `Transport` interface: public
-  rooms for gossip, E2EE DMs for negotiation. This is where it sits on openclaws.
-- **M4 — privacy ladder.** `blur()` climbs from cleartext → bloom → PSI → MPC.
+- **Privacy ladder.** `blur()` emits cleartext tags today - rung 1 of a ladder it can climb
+  without changing its interface: cleartext → bloom-filter overlap → private set intersection
+  → MPC/FHE scoring, trading match cost for ever-stronger privacy.
+- **Trust & rooms.** Signed vouch graphs and rotating pseudonyms; *rooms* with a **charter**
+  (who's admitted, what's postable, how you negotiate) - soft norms as LLM etiquette, hard
+  limits machine-enforced.
+- **Real transport.** Today the pool is central-hosted; later, federated transport (public
+  rooms for the blurred gossip, E2EE DMs for negotiation) so no host sees everything.
+- **Richer refinement.** Clarifying questions that elicit *missing constraints* (budget, size,
+  flexibility), not just substitutes - the payoff grows with genuinely vague human input.

@@ -16,7 +16,7 @@ export const sealedBidMarket: Charter = {
 export const barterBazaar: Charter = {
   id: "barter-bazaar",
   etiquette:
-    "Anything goes — goods, swaps, services, favors. Describe what you have and what you want. Be patient; barter takes rounds.",
+    "Anything goes - goods, swaps, services, favors. Describe what you have and what you want. Be patient; barter takes rounds.",
   minTrust: 0,
   allowedDomains: undefined,
   maxSignalsPerWindow: 6,

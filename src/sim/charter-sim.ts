@@ -20,9 +20,9 @@ const dates = (xs: string[] = []) => xs.filter((t) => /\d{4}/.test(t)).map(norm)
 /**
  * Barter agreement: a double coincidence of wants. Matched structurally on the
  * PLACE dimension (the swap itself), with the date treated as overlap-if-present
- * — because the distiller doesn't always emit symmetric have/want tags, exact
+ * - because the distiller doesn't always emit symmetric have/want tags, exact
  * full-tag matching is too brittle for real swaps. (A semantic matcher would be
- * more robust here — noted for later.)
+ * more robust here - noted for later.)
  */
 function doubleCoincidence(a: PrivateIntent, b: PrivateIntent): boolean {
   const aWant = cities(a.want), aHave = cities(a.have);
@@ -34,7 +34,7 @@ function doubleCoincidence(a: PrivateIntent, b: PrivateIntent): boolean {
   return !aD.length || !bD.length || aD.some((d) => bD.includes(d)); // unspecified ⇒ negotiable
 }
 
-console.log("\n▶ murmur — multi-room: goods → market, swaps → bazaar\n");
+console.log("\n▶ murmur - multi-room: goods → market, swaps → bazaar\n");
 
 const distiller = new LLMDistiller();
 const agents = await Promise.all(
@@ -92,5 +92,5 @@ for (let i = 0; i < bLive.length; i++) for (let j = i + 1; j < bLive.length; j++
     console.log(`  ${a.agentId} ⇄ ${b.agentId}  barter swap  [${(a.intent.have ?? []).join("+")}] ↔ [${(b.intent.have ?? []).join("+")}]`);
   }
 }
-if (!bAny) console.log("  (none — no double coincidence)");
+if (!bAny) console.log("  (none - no double coincidence)");
 console.log("");

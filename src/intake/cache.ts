@@ -4,14 +4,14 @@ import { join } from "node:path";
 
 const DIR = join(process.cwd(), ".cache");
 
-/** Stable key from any inputs — bump the version prefix to bust the cache. */
+/** Stable key from any inputs - bump the version prefix to bust the cache. */
 export function cacheKey(...parts: unknown[]): string {
   return createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 40);
 }
 
 /**
  * Disk-memoize an async (LLM) call so runs are reproducible and free on replay.
- * This is what restores determinism after M1 made the sim non-deterministic.
+ * This is what restores determinism once LLM calls make a run non-deterministic.
  */
 export async function cached<T>(key: string, fn: () => Promise<T>): Promise<{ value: T; hit: boolean }> {
   mkdirSync(DIR, { recursive: true });

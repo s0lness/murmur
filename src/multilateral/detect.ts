@@ -1,11 +1,13 @@
 import type { PrivateIntent } from "../core/intent";
+import { STOPWORDS } from "../core/stopwords";
 
 export interface Party { id: string; intent: PrivateIntent }
 
 const tags = (i: PrivateIntent) => (i.publicTags ?? i.tags).map((t) => t.toLowerCase());
-/** Word-level overlap — tolerant of the distiller's token drift, so "ps5:forza"
- *  and "forza", or "tickets" and "ticket" via "concert"/"friday", still connect. */
-const words = (xs: string[]) => new Set(xs.flatMap((t) => t.toLowerCase().split(/[^a-z0-9]+/)).filter((w) => w.length >= 3));
+/** Word-level overlap - tolerant of the distiller's token drift, so "ps5:forza"
+ *  and "forza", or "tickets" and "ticket" via "concert"/"friday", still connect.
+ *  Stopwords ("used", "free") are dropped so they can't create false overlaps. */
+const words = (xs: string[]) => new Set(xs.flatMap((t) => t.toLowerCase().split(/[^a-z0-9]+/)).filter((w) => w.length >= 3 && !STOPWORDS.has(w)));
 const overlap = (a: string[], b: string[]) => {
   const wa = words(a);
   for (const w of words(b)) if (wa.has(w)) return true;
@@ -15,7 +17,7 @@ const overlap = (a: string[], b: string[]) => {
 // ── Detector A: group-buy aggregation ──
 export interface GroupBuy { offer: Party; buyers: Party[]; qty: number }
 
-/** One BULK offer (qty ≥ 2) that several seekers want — cluster them into a
+/** One BULK offer (qty ≥ 2) that several seekers want - cluster them into a
  *  group buy. A single-unit offer with many buyers is NOT a group buy; it's
  *  contention for one item, handled by the pairwise allocation. */
 export function groupBuys(parties: Party[], minBuyers = 2): GroupBuy[] {

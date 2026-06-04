@@ -12,6 +12,6 @@ export function loadDotenv(): void {
       }
     }
   } catch {
-    /* no .env — rely on the ambient environment */
+    /* no .env - rely on the ambient environment */
   }
 }

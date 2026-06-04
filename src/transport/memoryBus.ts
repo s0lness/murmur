@@ -4,7 +4,7 @@ import type { DM, Transport } from "./bus";
 
 /**
  * In-process gossip + DM. Every delivery is routed through ctx.enqueue, so
- * messages land on the *next* tick — that's what gives us logical time and
+ * messages land on the *next* tick - that's what gives us logical time and
  * makes time-to-match measurable.
  */
 export class MemoryBus implements Transport {

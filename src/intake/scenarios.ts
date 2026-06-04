@@ -1,7 +1,7 @@
 import type { PersonaUtterances } from "./distiller";
 
 /**
- * Stage 1 — single, clean-ish utterances. Tests extraction + the public/private
+ * Stage 1 - single, clean-ish utterances. Tests extraction + the public/private
  * split + round-trip matching, with natural language on BOTH ends and no human
  * structuring the data. The FR switch pair should distill, blur, and match;
  * the iPhone line is pure noise and should never broadcast.
@@ -18,7 +18,7 @@ export function ambientMarket(): PersonaUtterances[] {
 }
 
 /**
- * Stage 2 — messy multi-line journals: real wants buried in noise, plus one
+ * Stage 2 - messy multi-line journals: real wants buried in noise, plus one
  * half-formed/conditional want each. Tests segmentation, latent-intent recall,
  * and over-firing restraint (the conditional wants should come back active:false).
  */
@@ -38,7 +38,7 @@ export function ambientJournal(): PersonaUtterances[] {
       persona: "Björn, lives in Berlin",
       utterances: [
         "rainy week again",
-        "thinking about subletting my Berlin place for June and crashing somewhere in New York — would swap if I found the right person",
+        "thinking about subletting my Berlin place for June and crashing somewhere in New York - would swap if I found the right person",
         "need to return that library book",
       ],
     },

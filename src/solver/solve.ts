@@ -1,10 +1,12 @@
 import type { PrivateIntent } from "../core/intent";
+import { discriminative } from "../core/stopwords";
 import { barterCycles, type Party } from "../multilateral/detect";
 
-/** What a seeker will accept = its own item tags ∪ its substitutes. */
+/** What a seeker will accept = its own item tags ∪ its substitutes, minus
+ *  non-discriminative words ("used", "free") that would create false matches. */
 const accepts = (i: PrivateIntent) =>
-  new Set([...(i.publicTags ?? i.tags), ...(i.substitutes ?? [])].map((t) => t.toLowerCase()));
-const provides = (i: PrivateIntent) => (i.publicTags ?? i.tags).map((t) => t.toLowerCase());
+  new Set(discriminative([...(i.publicTags ?? i.tags), ...(i.substitutes ?? [])]).map((t) => t.toLowerCase()));
+const provides = (i: PrivateIntent) => discriminative(i.publicTags ?? i.tags).map((t) => t.toLowerCase());
 
 /** Compatible if the offer provides something the seeker accepts, a ZOPA exists,
  *  and the deal beats both outside options (individual rationality via fallback). */
