@@ -18,3 +18,13 @@
 2026-06-04T11:29:41.456Z N=30+norm+helpclaude-opus-4-7 — deals 8 [deal,deal,deal,deal,deal,deal,deal,deal], cleared 14/30, coverage 37%, groups 0, rings 0, fell 4
 2026-06-04T11:35:48.717Z N=30+norm+help claude-opus-4-7 — deals 8 [deal,deal,deal,deal,deal,deal,deal,deal], cleared 14/30, coverage 37%, groups 0, rings 0, fell 4, cost ~$0.0000 (0 calls)
 2026-06-04T11:37:17.195Z N=7 claude-opus-4-7 — deals 4 [deal,deal,deal,deal], cleared 5/7, coverage 38%, groups 0, rings 0, fell 0, cost ~$1.9676 (29 calls)
+2026-06-04T11:44:26.011Z N=30+norm+help claude-opus-4-8 — deals 6 [deal,deal,deal,deal,group,group], cleared 13/30, coverage 48%, groups 2, rings 0, fell 10, cost ~$6.7300 (112 calls)
+2026-06-04T11:54:04.797Z N=14+help+refine claude-haiku-4-5 — deals 0 [none], cleared 0/14, coverage 0%, groups 0, rings 0, fell 0, cost ~$0.1743 (52 calls)
+2026-06-04T11:55:11.995Z N=14+help+refine claude-haiku-4-5 — deals 0 [none], cleared 0/14, coverage 0%, groups 0, rings 0, fell 0, cost ~$0.0372 (22 calls)
+2026-06-04T11:57:53.002Z N=16+help+refine claude-haiku-4-5 — deals 1 [deal], cleared 2/16, coverage 6%, groups 0, rings 0, fell 0, cost ~$0.1927 (62 calls)
+2026-06-04T11:59:49.609Z N=16+help+refine claude-haiku-4-5 — deals 1 [deal], cleared 2/16, coverage 6%, groups 0, rings 0, fell 0, cost ~$0.0033 (1 calls)
+2026-06-04T12:01:26.890Z N=8+help+refine claude-haiku-4-5 — deals 1 [deal], cleared 2/8, coverage 11%, groups 1, rings 0, fell 1, cost ~$0.0912 (25 calls)
+2026-06-04T12:02:22.323Z N=8+help+refine claude-haiku-4-5 — deals 0 [none], cleared 0/8, coverage 0%, groups 1, rings 0, fell 1, cost ~$0.0175 (5 calls)
+2026-06-04T12:03:23.298Z N=8+help+refine claude-haiku-4-5 — deals 0 [none], cleared 0/8, coverage 0%, groups 1, rings 0, fell 1, cost ~$0.0000 (0 calls)
+2026-06-04T12:05:55.425Z N=30+help+refine claude-opus-4-8 — deals 10 [deal,deal,deal,deal,deal,deal,deal,deal,group,group], cleared 17/30, coverage 42%, groups 2, rings 0, fell 3, cost ~$5.8248 (93 calls)
+2026-06-04T12:08:28.175Z N=8+help+refine claude-haiku-4-5 — deals 0 [none], cleared 0/8, coverage 11%, groups 1, rings 0, fell 2, cost ~$0.0189 (7 calls)

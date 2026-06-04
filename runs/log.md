@@ -149,4 +149,22 @@ Fixed both bugs from Session 6, re-ran, and verified. Before → after (same 30 
 
 **Still open (not bugs, design):** `MURMUR_CURRENCY=€` for the French bot pilot would need the distiller's GBP base flipped too (currently hardcoded GBP, fine for the £ lab). Bulk-seller *legitimate* group-buys still want demand-gating polish, but the false blast is gone.
 
+---
+
+## Session 8 — 2026-06-04 · refinement loop (the "fuzzy discussion")
+
+Built the clarify→refine→re-match loop you wanted: when a seeker is left unmatched, its agent asks the human ONE clarifying question; the human (their LLM stand-in) answers truthfully per persona; an **accepted answer refines the broadcast** (persists the offered item as a `substitute`) and `settleCommerce` re-matches the refined pool. Flag `refine`. Every exchange shows on the dashboard's agent⇄human panel. Switched everything to **`$`** (display default + distiller normalizes to USD) and model to **opus-4-8**.
+
+**Two iterations:**
+1. v1 let an LLM (`agentClarify`) pick the "closest" offer → on weak models it forced absurd suggestions (a Switch for digital drawing, a folding bike for someone wanting a helmet); every human correctly rejected. 0 value, lots of noise.
+2. v2 **edge-grounds** the question: only ask when the helper's canonical aliasing links a seeker's want to an available offer (shared canon token, no raw token) — a genuine near-substitute. No more false questions.
+
+**Finding — refine is correct but low-yield, and we learned *why*.** On realistic N=30 (opus-4-8): 17/30 cleared, 10 deals, **refine asked 0**. The reason is structural and worth stating: **the stopword-filtered token matcher already catches most substitutes, because real substitutes usually share a category word** ("road bike"/"hybrid bike" share `bike`; "standing desk"/"desk" share `desk`) — so they match deterministically. Refine's residual niche is the narrow case where the two sides share *no* token but are semantically linked: **brand-vs-category** ("PS5" vs "games console") or **cross-category**. That niche is rare in small pools — the same density story as barter rings.
+
+Worse for demoing it: the distiller *insists* on adding the category token ("PS5" → tags include `console`), which collapses even the brand-vs-category gap into a deterministic match. Every planted attempt either matched deterministically (correct outcome, no refine needed) or fell through on a blur ambiguity ("console games" read by the seller as wanting game discs). So the synthetic demo kept proving the matcher is *already good*, not that refine is broken.
+
+**Decision:** keep refine — it's correct, conservative (0 false questions), and the exchange-visibility is valuable on its own. But its lab value is capped by how good the deterministic substitute-matching already is. The place it will actually pay off is the **live bot with real humans**, where wants are genuinely vaguer and under-specified (missing budget, "something for the kids") than the distiller's clean tags — there the clarifying question elicits info that *wasn't extractable up front*, which is the real "fuzzy discussion." A natural extension: have refine also elicit **missing constraints** (budget, size, flexibility), not just substitutes.
+
+Cost note: fresh opus-4-8 N=30 ≈ **$5.82**; haiku demos ≈ $0.01–0.20.
+
 **Tooling — cost/token meter.** Added `src/core/usage.ts`: every Anthropic call reports `usage`; cache HITS make no API call so they cost nothing and aren't counted. The run prints and the dashboard shows API calls / tokens in→out / est. USD (priced per model family — opus $15/$75, sonnet $3/$15, haiku $1/$5 per Mtok; cache writes 1.25×, reads 0.1×; override with `MURMUR_PRICE_IN/OUT`). Reference: a **fresh** N=7 (opus-4-7) = 29 calls, ~69k in / 10k out, **~$1.97**; a cached replay = **$0** (free). So the lab is cheap to iterate once warm, and the dashboard makes the real cost of a cold run visible. (Opus is ~15× haiku — `MURMUR_MODEL=claude-haiku-4-5` for cheap sweeps.)

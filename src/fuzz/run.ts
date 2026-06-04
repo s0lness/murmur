@@ -42,8 +42,10 @@ const SWAP_RING: Persona[] = [
 // can't link to the offer ("PS5"), but the helper can (ps5≈games console). The
 // flexible human accepts when asked → broadcast refined → deal recovered.
 const REFINE_DEMO: Persona[] = [
-  { id: "f1", name: "Pat Flex", brief: "Easy-going, flexible, just wants the kids to have fun — not brand-loyal at all.", wants: ["Looking for an Xbox for the kids, but honestly I'm not fussy about the brand — anything they can play games on, around $200"] },
-  { id: "f2", name: "Quinn Sell", brief: "Straightforward seller.", wants: ["Selling my PlayStation 5, barely used, two controllers, $190"] },
+  { id: "f1", name: "Pat Flex", brief: "Easy-going, flexible, not brand-loyal — just wants the kids entertained.", wants: ["Looking for a games console for the kids, any kind is totally fine, around $200"] },
+  { id: "f2", name: "Quinn Sell", brief: "Straightforward seller.", wants: ["Selling my PlayStation 5, mint, $190"] },
+  // Note: the distiller usually tags both with "console", so they match deterministically
+  // rather than via refine — which is itself the finding (see runs/log.md Session 8).
 ];
 const distiller = new LLMDistiller();
 const item = (i: PrivateIntent) => (i.publicTags ?? i.tags).slice(0, 3).join(" ");
