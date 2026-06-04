@@ -104,3 +104,23 @@ Built the architecture decided in Session 4. `help` now runs the **hybrid**:
 **Net / decision:** the oracle/solver split holds yet again — LLM for fuzzy equivalence (recall), deterministic engine for combinatorial assembly (precision), human for confirm (safety). This is the shape to port to the live bot's settle loop: run it as a failover only on the unmatched residual, surface recoveries as confirm-questions, never auto-settle. The pure-LLM `proposeFuzzy` stays in the tree as the measured baseline. Group-buy↔barter unification falls out for free (same augmented graph feeds both detectors). Open item: rings need population density to appear organically — worth a larger-N or barter-seeded run to quantify the yield curve.
 
 Harness flags now: `npm run fuzz <N> [ring] [cring] [norm] [help]` (help = hybrid).
+
+---
+
+## Session 6 — 2026-06-04 · N=30 · opus-4-7 · hybrid + live dashboard
+
+Scaled to 30 agents and added a **live dashboard** (`viewer/fuzz.html`, served by `viewer/serve.mjs` on :5050; run with the `watch` flag to pace events so it animates). The run streams population → deals → declines → fuzzy edges → metrics into `viewer/fuzz-live.json`.
+
+Result: **11/30 cleared**, 7 deals (incl. a 4-person group buy), 45% coverage, surplus 805, groups 3, rings 0. Helper(hybrid): 3 edges, 0 rings closed, 1 substitute attempt, **0 false deals**. Findings:
+
+1. **Currency bug (real pipeline gap).** Yuki⇄Reece Steam Deck fell through at the price step: the buyer revised because *"my budget is £400, not €400 — lock the cap in GBP."* Personas state budgets in £, the IR-pricer emits €, and nothing normalizes. The valuations are being compared and midpoint-priced across currencies. **Decision (todo):** carry a currency on valuations (or normalize to one unit at distill time); the bot's `negotiate()` midpoint is currency-blind today.
+
+2. **Bulk-seller blast recurs at scale (Session 2, unfixed).** Sanjay's 3-mat yoga set (qty≥2) sprayed pairwise proposals to 3 unrelated buyers (Maya, Daniel, Aisha) — all correctly passed. Still want demand-gating on multi-qty offers before the solver proposes / a group forms.
+
+3. **Helper safe and quiet at N=30 (reconfirms S4/S5).** 3 fuzzy edges proposed, but no cycle closes and the lone substitute (balance-bike → "I need a *pedal* bike for the twins") is correctly declined. 0 false deals reach the gate. Organic 30-person populations still contain **no closeable rings** even after fuzzy augmentation — bottleneck remains density, not expressivity. (There were near-chains — a bike ecosystem of hybrid sellers, turbo-trainer swaps, road-bike seekers — but no closed loop.)
+
+4. **Ported the hybrid to the live bot.** `scanMultiDeals` now runs the lexical group/ring detectors over both the real pool and an LLM-edge-augmented copy (try/catch failover, gated ≥3 intents). The bilateral path already uses the semantic `matchAgainstPool` judge, so this only closes the lexical-detector gap. Same human-vote gate (`g:` callbacks).
+
+**Net:** the lab is now observable (dashboard) and the engine is ported to production. Two concrete product bugs to fix next — **currency normalization** (was actively losing a deal) and **bulk-seller demand-gating**. Rings remain a density story: worth a seeded-barter population or a much larger N to quantify, but they won't appear in friend-group-sized pools on their own.
+
+Dashboard: `node viewer/serve.mjs` → http://localhost:5050/fuzz.html, then `npm run fuzz 30 help norm watch`.

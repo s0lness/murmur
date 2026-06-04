@@ -7,3 +7,6 @@
 2026-06-04T10:13:45.368Z N=11+cring+helpclaude-opus-4-7 — deals 5 [deal,deal,deal,group,~ring], cleared 8/11, coverage 43%, groups 1, rings 0, fell 3
 2026-06-04T10:14:26.621Z N=11+cring+helpclaude-opus-4-7 — deals 5 [deal,deal,deal,group,~ring], cleared 8/11, coverage 43%, groups 1, rings 0, fell 3
 2026-06-04T10:14:43.201Z N=20+helpclaude-opus-4-7 — deals 4 [deal,deal,deal,group], cleared 8/20, coverage 31%, groups 4, rings 0, fell 13
+2026-06-04T10:22:06.562Z N=30+norm+helpclaude-opus-4-7 — deals 7 [deal,deal,deal,deal,deal,deal,group], cleared 11/30, coverage 45%, groups 3, rings 0, fell 13
+2026-06-04T10:26:59.831Z N=30+norm+helpclaude-opus-4-7 — deals 7 [deal,deal,deal,deal,deal,deal,group], cleared 13/30, coverage 48%, groups 3, rings 0, fell 13
+2026-06-04T10:27:24.622Z N=30+norm+helpclaude-opus-4-7 — deals 7 [deal,deal,deal,deal,deal,deal,group], cleared 13/30, coverage 48%, groups 3, rings 0, fell 13

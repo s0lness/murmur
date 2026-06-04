@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type PrivateIntent } from "../core/intent";
 import { loadDotenv } from "../intake/env";
@@ -16,6 +16,7 @@ if (!process.env.ANTHROPIC_API_KEY) { console.error("ANTHROPIC_API_KEY not set."
 const N = Number(process.argv[2]) || 12;
 const NORM = process.argv.includes("norm"); // canonicalize the pool (domains/tokens) before detection
 const HELP = process.argv.includes("help"); // run the LLM matchmaker failover on the residual
+const WATCH = process.argv.includes("watch"); // pace the run so the dashboard can animate it
 const PLANT = process.argv.includes("ring"); // inject a deterministic 3-way swap cycle to exercise the ring path
 const CRING = process.argv.includes("cring"); // inject a ring that closes semantically but breaks on one lexical gap
 
@@ -46,6 +47,25 @@ console.log(`\n▶ murmur fuzz — ${N} LLM-humans on the real pipeline (model $
 
 const personas = [...(await makePersonas(N)), ...(PLANT ? RING : []), ...(CRING ? SWAP_RING : [])];
 const POP = personas.length;
+
+// ── live dashboard feed: write a snapshot the viewer polls (viewer/fuzz.html) ──
+const LIVE = join(process.cwd(), "viewer", "fuzz-live.json");
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const live = {
+  startedAt: new Date().toISOString(), n: POP, model: process.env.MURMUR_MODEL ?? "haiku-4-5",
+  flags: [NORM && "norm", HELP && "help", PLANT && "ring", CRING && "cring"].filter(Boolean),
+  phase: "distilling wants…", population: [] as { name: string; brief: string; intents: string[] }[],
+  deals: [] as { kind: string; who: string[]; detail: string }[], declines: [] as string[],
+  edges: [] as { a: string; b: string; confidence: number; question: string }[],
+  metrics: null as null | { cleared: number; pop: number; coveragePct: number; surplus: number; groups: number; rings: number; helper: string },
+};
+async function tick(phase?: string, pace = true) {
+  if (phase) live.phase = phase;
+  writeFileSync(LIVE, JSON.stringify(live));
+  if (WATCH && pace) await sleep(450);
+}
+await tick();
+
 const personaOf = new Map<string, Persona>(); // intentId → persona
 const all: PrivateIntent[] = [];
 await Promise.all(personas.map(async (p) => {
@@ -74,7 +94,9 @@ console.log("─ population ─────────────────�
 for (const p of personas) {
   const mine = all.filter((i) => personaOf.get(i.id) === p);
   console.log(`  ${p.name.padEnd(14)} ${mine.map((i) => `${i.kind}:${item(i)}`).join(" · ") || "(no intent)"}`);
+  live.population.push({ name: p.name, brief: p.brief, intents: mine.map((i) => `${i.kind}:${item(i)}`) });
 }
+await tick("population broadcast");
 
 // ── settle ──
 const settlement = solve(parties, "coverage");
@@ -84,6 +106,8 @@ const rings = barterCycles(parties).filter((r) => r.members.length >= 3);
 interface Deal { kind: string; who: string[]; detail: string }
 const deals: Deal[] = [];
 const declines: string[] = [];
+live.deals = deals; live.declines = declines; // share refs so ticks reflect live contents
+await tick("deterministic matching");
 
 // pairwise commerce: both must connect, then both approve the price
 for (const t of settlement.trades) {
@@ -96,14 +120,15 @@ for (const t of settlement.trades) {
   if (!bConn.connect || !sConn.connect) {
     const who = !bConn.connect ? bP : sP, reason = !bConn.connect ? bConn.reason : sConn.reason;
     declines.push(`${bP.name}⇄${sP.name} (${item(sI)}): ${who.name} passed — "${reason}"`);
-    continue;
+    await tick(); continue;
   }
   const price = irPrice(bI, sI);
-  if (price == null) { deals.push({ kind: "deal", who: [bP.name, sP.name], detail: `${item(sI)} (no price)` }); continue; }
+  if (price == null) { deals.push({ kind: "deal", who: [bP.name, sP.name], detail: `${item(sI)} (no price)` }); await tick(); continue; }
   const bA = await decidePrice(bP, item(sI), price, "buy");
   const sA = await decidePrice(sP, item(sI), price, "sell");
   if (bA.action === "approve" && sA.action === "approve") deals.push({ kind: "deal", who: [bP.name, sP.name], detail: `${item(sI)} @ €${price}` });
   else declines.push(`${bP.name}⇄${sP.name} (${item(sI)} @ €${price}): ${bA.action}/${sA.action} — buyer:"${bA.reason}" seller:"${sA.reason}"`);
+  await tick();
 }
 
 // group buys: seller + buyers all decide to join
@@ -114,6 +139,7 @@ for (const g of groups) {
   const joined = votes.filter((v) => v.connect).length;
   if (votes[0]?.connect && joined >= 2) deals.push({ kind: "group", who: members.map((m) => m.name), detail: `${item(g.offer.intent)} ×${g.qty} group buy` });
   else declines.push(`group ${item(g.offer.intent)}: only ${joined} joined`);
+  await tick("multilateral (group-buys & rings)");
 }
 
 // barter rings: all members must join
@@ -125,6 +151,7 @@ for (const r of rings) {
   }));
   if (votes.every((v) => v.connect)) deals.push({ kind: "ring", who: members.map((m) => m.name), detail: `${r.members.length}-way swap` });
   else declines.push(`ring ${members.map((m) => m.name).join("→")}: someone passed`);
+  await tick("multilateral (group-buys & rings)");
 }
 
 // ── helper failover (hybrid): LLM emits fuzzy edges, the deterministic detector
@@ -137,7 +164,10 @@ if (HELP) {
     id: p.id, who: personaOf.get(p.id)!.name, kind: p.intent.kind, item: item(p.intent),
     have: p.intent.have ?? [], want: p.intent.want ?? [],
   }));
+  await tick("helper failover — LLM proposing fuzzy edges");
   const edges = await proposeEdges(residual);
+  live.edges = edges;
+  await tick("helper failover — closing over augmented graph");
   const { canon, questionFor } = buildAliases(edges);
   // augment: rewrite every token to its equivalence-class canonical, then re-detect
   const aug: Party[] = residualParties.map((p) => {
@@ -160,6 +190,7 @@ if (HELP) {
     }));
     if (votes.every((v) => v.connect)) { deals.push({ kind: "~ring", who: ps.map((p) => p.name), detail: `${n}-way swap (helper edges)` }); recovered++; }
     else { const i = votes.findIndex((v) => !v.connect); declines.push(`helper ring (${ps.map((p) => p.name).join("→")}): ${ps[i]?.name} passed — "${votes[i]?.reason}"`); }
+    await tick();
   }
 
   // 2-party commerce/substitute surfaced only by the augmented graph
@@ -195,6 +226,12 @@ console.log(`  people with a deal   ${clearedPeople.size}/${POP}`);
 console.log(`  solver coverage      ${Math.round(sc.coverage * 100)}% of intents   surplus ${sc.surplus}`);
 console.log(`  groups ${groups.length}   rings ${rings.length}`);
 if (helperStats) console.log(helperStats);
+
+live.metrics = {
+  cleared: clearedPeople.size, pop: POP, coveragePct: Math.round(sc.coverage * 100),
+  surplus: sc.surplus, groups: groups.length, rings: rings.length, helper: helperStats.trim(),
+};
+await tick("done", false);
 
 // ── run log ── compact one-liner to a raw index; curated findings live in log.md
 mkdirSync(join(process.cwd(), "runs"), { recursive: true });
