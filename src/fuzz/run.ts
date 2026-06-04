@@ -11,7 +11,6 @@ import { buildAliases, proposeEdges, type ResidualIntent } from "../solver/helpe
 import { score, solve } from "../solver/solve";
 import { decideMatch as rawMatch, decidePrice as rawPrice, decideRefine } from "./human";
 import { makePersonas, type Persona } from "./persona";
-import { agentClarify } from "./refine";
 
 loadDotenv();
 if (!process.env.ANTHROPIC_API_KEY) { console.error("ANTHROPIC_API_KEY not set."); process.exit(1); }
@@ -23,6 +22,7 @@ const REFINE = process.argv.includes("refine"); // agents ask unmatched users a 
 const WATCH = process.argv.includes("watch"); // pace the run so the dashboard can animate it
 const PLANT = process.argv.includes("ring"); // inject a deterministic 3-way swap cycle to exercise the ring path
 const CRING = process.argv.includes("cring"); // inject a ring that closes semantically but breaks on one lexical gap
+const REFDEMO = process.argv.includes("refdemo"); // inject a flexible seeker + near-substitute offer to exercise refine
 
 // A→B→C→A: Ada wants what Ben has, Ben wants what Cleo has, Cleo wants what Ada has.
 const RING: Persona[] = [
@@ -38,6 +38,13 @@ const SWAP_RING: Persona[] = [
   { id: "s2", name: "Ivy Trade", brief: "Trades, never sells.", wants: ["Swap my road bike for a good camera — happy to trade, not after cash"] },
   { id: "s3", name: "Jo Trade", brief: "Barter type, no money involved.", wants: ["I'll trade my mirrorless camera for a games console for the kids — swap only"] },
 ];
+// Refine demo: a FLEXIBLE seeker whose want ("games console") the keyword matcher
+// can't link to the offer ("PS5"), but the helper can (ps5≈games console). The
+// flexible human accepts when asked → broadcast refined → deal recovered.
+const REFINE_DEMO: Persona[] = [
+  { id: "f1", name: "Pat Flex", brief: "Easy-going, flexible, just wants the kids to have fun — not brand-loyal at all.", wants: ["Looking for an Xbox for the kids, but honestly I'm not fussy about the brand — anything they can play games on, around $200"] },
+  { id: "f2", name: "Quinn Sell", brief: "Straightforward seller.", wants: ["Selling my PlayStation 5, barely used, two controllers, $190"] },
+];
 const distiller = new LLMDistiller();
 const item = (i: PrivateIntent) => (i.publicTags ?? i.tags).slice(0, 3).join(" ");
 const irPrice = (b: PrivateIntent, s: PrivateIntent): number | null => {
@@ -49,7 +56,7 @@ const irPrice = (b: PrivateIntent, s: PrivateIntent): number | null => {
 
 console.log(`\n▶ murmur fuzz — ${N} LLM-humans on the real pipeline (model ${process.env.MURMUR_MODEL ?? "haiku-4-5"})\n`);
 
-const personas = [...(await makePersonas(N)), ...(PLANT ? RING : []), ...(CRING ? SWAP_RING : [])];
+const personas = [...(await makePersonas(N)), ...(PLANT ? RING : []), ...(CRING ? SWAP_RING : []), ...(REFDEMO ? REFINE_DEMO : [])];
 const POP = personas.length;
 
 // ── live dashboard feed: write a snapshot the viewer polls (viewer/fuzz.html) ──
@@ -250,20 +257,26 @@ if (REFINE) {
   await tick("refinement — agents asking clarifying questions");
   let asked = 0, refined = 0, recovered = 0;
   const clearedR = () => new Set(deals.flatMap((d) => d.who));
-  const offerView = parties.filter((p) => p.intent.kind === "offer").map((p) => ({ id: p.id, item: item(p.intent) }));
-  // ask each still-unmatched seeker one clarifying question about the closest offer
+  // Edge-grounded: only ask about offers the helper says are genuine near-substitutes
+  // (same canonical token after fuzzy aliasing) but that the keyword matcher missed.
+  const residual: ResidualIntent[] = parties.filter((p) => !clearedR().has(personaOf.get(p.id)!.name))
+    .map((p) => ({ id: p.id, who: personaOf.get(p.id)!.name, kind: p.intent.kind, item: item(p.intent), have: p.intent.have ?? [], want: p.intent.want ?? [] }));
+  const { canon } = buildAliases(await proposeEdges(residual));
+  const offerParties = parties.filter((p) => p.intent.kind === "offer");
+  const toks = (i: PrivateIntent) => (i.publicTags ?? i.tags).map((t) => t.toLowerCase());
   for (const s of parties.filter((p) => p.intent.kind === "seek" && !clearedR().has(personaOf.get(p.id)!.name))) {
     const sP = personaOf.get(s.id)!;
-    const cands = offerView.filter((o) => personaOf.get(o.id) !== sP && !tried.has(pairKey(sP.name, personaOf.get(o.id)!.name)));
-    const { candidate, question } = await agentClarify(item(s.intent), cands);
-    if (!candidate || !question || !intentById.has(candidate)) continue;
+    const wantCanon = new Set(toks(s.intent).map(canon)), wantRaw = new Set(toks(s.intent));
+    // an offer is a near-substitute if it shares a CANONICAL token but no RAW token
+    const cand = offerParties.find((o) => personaOf.get(o.id) !== sP && !tried.has(pairKey(sP.name, personaOf.get(o.id)!.name))
+      && toks(o.intent).some((t) => wantCanon.has(canon(t)) && !wantRaw.has(t)));
+    if (!cand) continue;
     asked++;
+    const question = `There's "${item(cand.intent)}" available — would that work for your "${item(s.intent)}"?`;
     const ans = await decideRefine(sP, question);
     live.conversations.push({ persona: sP.name, agent: `💡 ${question}`, human: `${ans.accept ? "✅ yes" : "❌ no"} — ${ans.reason}`, ok: ans.accept });
-    if (ans.accept) {
-      // refine the broadcast: accept the offered item as a substitute for this want
-      const offTags = item(intentById.get(candidate)!).split(" ").filter(Boolean);
-      s.intent.substitutes = [...new Set([...(s.intent.substitutes ?? []), ...offTags])];
+    if (ans.accept) { // refine the broadcast: persist the offered item as a substitute
+      s.intent.substitutes = [...new Set([...(s.intent.substitutes ?? []), ...toks(cand.intent)])];
       refined++;
     }
     await tick();
