@@ -7,7 +7,9 @@ import { Room } from "../src/rooms/room";
 // regardless of whether an agent read the etiquette. One rejection per rule.
 
 const sig = (over: Partial<PublicSignal> = {}): PublicSignal => ({
-  id: "s1", pseudonymId: "anon-a", kind: "offer", domain: "goods.games", tags: ["switch"], region: "*", ...over, trustGate: 1,
+  id: "s1", pseudonymId: "anon-a", kind: "offer", domain: "goods.games", tags: ["switch"], region: "*",
+  ...over,
+  trustGate: over.trustGate ?? 1, // overridable, but always a number (PublicSignal requires it)
 });
 
 describe("Room charter enforcement (issue #4)", () => {
@@ -49,5 +51,15 @@ describe("Room charter enforcement (issue #4)", () => {
     expect(blocked.reason).toMatch(/rate/);
     // window slides past windowTicks -> allowed again
     expect(room.publish("a", sig(), 10).accepted).toBe(true);
+  });
+
+  it("cooperative path: a member who reads the etiquette and posts within limits is accepted", () => {
+    const room = new Room(sealedBidMarket);
+    expect(room.rulesOfTheRoom()).toBe(sealedBidMarket.etiquette); // agent ingests the norms on entry
+    expect(room.join({ agentId: "a", trustScore: 0.9 }).ok).toBe(true);
+    expect(room.publish("a", sig({ id: "x1" }), 0).accepted).toBe(true);
+    expect(room.publish("a", sig({ id: "x2" }), 1).accepted).toBe(true); // 2nd, still within 2/5
+    expect(room.accepted).toHaveLength(2);
+    expect(room.rejections).toHaveLength(0);
   });
 });
