@@ -2,6 +2,7 @@ import { Bot, type Context, InlineKeyboard } from "grammy";
 import { type PrivateIntent } from "../core/intent";
 import { LLMDistiller } from "../intake/llmDistiller";
 import { barterCycles, groupBuys, type Party } from "../multilateral/detect";
+import { buildAliases, proposeEdges, type ResidualIntent } from "../solver/helper";
 import { matchAgainstPool } from "./commons";
 import { type Match, type MultiDeal, Store, type StoredIntent, type User } from "./store";
 
@@ -424,21 +425,57 @@ export function createBot(token: string, store: Store): Bot {
     const parties: Party[] = active.map((s) => ({ id: s.id, intent: s.intent }));
     const userOf = new Map(active.map((s) => [s.id, s.userId]));
 
-    for (const g of groupBuys(parties)) {
+    const proposeGroup = async (g: ReturnType<typeof groupBuys>[number]) => {
       const recs = [g.offer, ...g.buyers].map((p) => ({ userId: userOf.get(p.id)!, intentId: p.id }));
       const uids = recs.map((r) => r.userId);
-      if (new Set(uids).size < 3) continue; // anchor + ≥2 distinct buyers
-      if (store.findMultiByParties("group", uids)) continue;
+      if (new Set(uids).size < 3) return; // anchor + ≥2 distinct buyers
+      if (store.findMultiByParties("group", uids)) return;
       await proposeMulti(store.addMultiDeal("group", g.offer.intent.domain, recs, g.qty));
-    }
-    for (const r of barterCycles(parties)) {
-      if (r.members.length < 3) continue; // 2-cycles are pairwise swaps
+    };
+    const proposeRing = async (r: { members: Party[] }) => {
+      if (r.members.length < 3) return; // 2-cycles are pairwise swaps
       const recs = r.members.map((p) => ({ userId: userOf.get(p.id)!, intentId: p.id }));
       const uids = recs.map((rr) => rr.userId);
-      if (new Set(uids).size < r.members.length) continue;
-      if (store.findMultiByParties("ring", uids)) continue;
+      if (new Set(uids).size < r.members.length) return;
+      if (store.findMultiByParties("ring", uids)) return;
       await proposeMulti(store.addMultiDeal("ring", "swap", recs, 1));
+    };
+
+    // pass 1: lexical detectors over the real pool
+    for (const g of groupBuys(parties)) await proposeGroup(g);
+    for (const r of barterCycles(parties)) await proposeRing(r);
+
+    // pass 2 (failover): an LLM emits fuzzy equivalences ("ps5"≈"games console")
+    // the keyword detectors miss; re-run them over the token-augmented pool so a
+    // ring/group can close across representation drift. Same human vote gates it.
+    try {
+      const aug = await augmentPool(active);
+      if (aug) {
+        for (const g of groupBuys(aug)) await proposeGroup(g);
+        for (const r of barterCycles(aug)) await proposeRing(r);
+      }
+    } catch (e) {
+      console.error("[helper failover]", e); // never let recall break settle
     }
+  }
+
+  /** Build a token-augmented copy of the pool: ask the LLM for fuzzy edges over
+   *  the residual, collapse each equivalence class to one canonical token. The
+   *  augmented parties keep the SAME intent ids, so MultiDeals stay readable. */
+  async function augmentPool(active: StoredIntent[]): Promise<Party[] | null> {
+    if (active.length < 3) return null;
+    const residual: ResidualIntent[] = active.map((s) => ({
+      id: s.id, who: String(s.userId), kind: s.intent.kind,
+      item: (s.intent.publicTags ?? s.intent.tags).join(" "),
+      have: s.intent.have ?? [], want: s.intent.want ?? [],
+    }));
+    const edges = await proposeEdges(residual);
+    if (edges.length === 0) return null;
+    const { canon } = buildAliases(edges);
+    return active.map((s) => {
+      const tags = (s.intent.publicTags ?? s.intent.tags).map(canon);
+      return { id: s.id, intent: { ...s.intent, tags, publicTags: tags, have: (s.intent.have ?? []).map(canon), want: (s.intent.want ?? []).map(canon) } };
+    });
   }
 
   function describeFor(deal: MultiDeal, userId: number): string {
