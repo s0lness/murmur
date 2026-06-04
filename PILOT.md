@@ -16,9 +16,13 @@ ANTHROPIC_API_KEY=sk-ant-...
 TELEGRAM_BOT_TOKEN=...            # from @BotFather
 MURMUR_MODEL=claude-opus-4-8     # see "Model & cost" below
 MURMUR_CURRENCY=$                # symbol shown to users ($, £, €)
+MURMUR_HOST_ID=                  # optional: your Telegram user id, to DM you /feedback live
 ```
 
 > **Rotate any key that's ever been pasted into a chat.** `.env` is gitignored - keep it that way.
+
+(To find your `MURMUR_HOST_ID`, DM the bot and read the `user` field in `logs/events.jsonl`, or
+message `@userinfobot`.)
 
 ## Launch
 
@@ -62,7 +66,29 @@ DM the bot in plain words - `"selling my road bike, around 150, around till Sund
    haggling - research showed deterministic pricing is safer);
 4. on mutual *Connect* + *Approve*, drops the two into a direct connection to settle IRL.
 
-Commands: `/start /me /clear /pass /status /rematch /simulate`.
+Commands: `/start /me /status /pass /clear /feedback /help` (plus `/rematch` and `/simulate` for the host).
+
+## Language
+
+Peers can write in **any language**. The distiller normalises tags to English internally, so a
+French "vélo" and an English "bike" still match, and the semantic matcher bridges paraphrase
+across languages too. The bot's own replies are in English for this pilot (localising them is a
+later nicety, not a blocker).
+
+## Capturing the pilot (logs & feedback)
+
+Everything worth analysing is appended to **`logs/events.jsonl`** (one JSON object per line,
+gitignored - it holds real messages). Event types: `intake`, `match_proposed`, `deal`, `pass`,
+`feedback`. Slice it afterwards, e.g.:
+
+```bash
+jq 'select(.type=="deal")' logs/events.jsonl                    # every deal that closed
+jq -r 'select(.type=="feedback") | .text' logs/events.jsonl     # all feedback
+jq -r 'select(.type=="intake") | .text' logs/events.jsonl       # what people actually asked for
+```
+
+Friends can send notes any time with **`/feedback <message>`** - it lands in the log, and if you
+set `MURMUR_HOST_ID` it also DMs you live.
 
 ## Privacy caveat (tell your friends)
 

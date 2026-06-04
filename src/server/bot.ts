@@ -5,6 +5,7 @@ import { barterCycles, groupBuys, type Party } from "../multilateral/detect";
 import { money } from "../core/currency";
 import { buildAliases, proposeEdges, type ResidualIntent } from "../solver/helper";
 import { matchAgainstPool } from "./commons";
+import { logEvent } from "./eventlog";
 import { type Match, type MultiDeal, Store, type StoredIntent, type User } from "./store";
 
 const WELCOME =
@@ -28,6 +29,7 @@ const HELP =
   "/status - what's in the pool\n" +
   "/pass - skip the match I just suggested\n" +
   "/clear - forget all my wants\n" +
+  "/feedback <message> - send the host a note\n" +
   "/help - this message";
 
 const article = (s: string) => (/^[aeiou]/i.test(s) ? "an" : "a");
@@ -113,7 +115,21 @@ export function createBot(token: string, store: Store): Bot {
     if (held.length) msg += "\n\nHolding (not broadcast yet): " + held.map((s) => human(s.intent)).join("; ") + ".";
     return ctx.reply(msg);
   });
-  bot.command("clear", (ctx) => { if (!ctx.from) return; store.clearUser(ctx.from.id); return ctx.reply("Cleared your wants."); });
+  bot.command("clear", (ctx) => { if (!ctx.from) return; store.clearUser(ctx.from.id); return ctx.reply("Cleared - you have no active wants now."); });
+  bot.command("feedback", (ctx) => {
+    if (!ctx.from) return;
+    remember(ctx.from);
+    const text = ctx.match.trim();
+    if (!text) return ctx.reply("Tell me what's on your mind, like:\n/feedback it keeps suggesting bikes I don't want 😅");
+    logEvent("feedback", { user: ctx.from.id, handle: ctx.from.username, name: ctx.from.first_name, text });
+    // Forward to the host's DM if MURMUR_HOST_ID is set (so you see it live).
+    const host = Number(process.env.MURMUR_HOST_ID);
+    const who = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name ?? `user ${ctx.from.id}`;
+    if (host && host !== ctx.from.id) {
+      void bot.api.sendMessage(host, `📣 Feedback from ${who}:\n${text}`).catch(() => {});
+    }
+    return ctx.reply("🙏 Thanks - sent your feedback to the host.");
+  });
   bot.command("pass", (ctx) => {
     if (!ctx.from) return;
     const m = activeMatchOf(ctx.from.id);
@@ -170,7 +186,7 @@ export function createBot(token: string, store: Store): Bot {
     if (!side) return ctx.answerCallbackQuery();
 
     if (tag === "c") {
-      if (decision === "no") { m.status = "passed"; store.dismiss(m.aUser, m.bUser, matchDomain(m)); store.persist(); await ctx.editMessageText("No worries - passed. I won't suggest this again."); return ctx.answerCallbackQuery(); }
+      if (decision === "no") { m.status = "passed"; store.dismiss(m.aUser, m.bUser, matchDomain(m)); store.persist(); logEvent("pass", { match: m.id, by: ctx.from.id, domain: matchDomain(m) }); await ctx.editMessageText("No worries - passed. I won't suggest this again."); return ctx.answerCallbackQuery(); }
       if (side === "a") m.aConsent = true; else m.bConsent = true;
       store.persist();
       await ctx.editMessageText("👍 Interested - waiting for the other side…");
@@ -265,6 +281,11 @@ export function createBot(token: string, store: Store): Bot {
     for (const id of removeIds) store.removeIntent(id);
     for (const u of updates) store.updateIntent(u.id, u.valuation ?? undefined, u.active);
     const added = adds.map((i) => store.addIntent(ctx.from!.id, i));
+    logEvent("intake", {
+      user: ctx.from.id, text: utterance,
+      added: added.map((s) => ({ kind: s.intent.kind, domain: s.intent.domain, tags: s.intent.publicTags ?? s.intent.tags, active: s.intent.active !== false })),
+      updated: updates.length, removed: removeIds.length,
+    });
 
     const lines: string[] = [];
     const broadcast = added.filter((s) => s.intent.active !== false);
@@ -357,6 +378,7 @@ export function createBot(token: string, store: Store): Bot {
     if (isSim(m.aUser)) m.aConsent = true; // sim auto-connects
     if (isSim(m.bUser)) m.bConsent = true;
     store.persist();
+    logEvent("match_proposed", { match: m.id, a: a.userId, b: b.userId, domain: a.intent.domain, item: itemName(b.intent) });
     const connectBtns = (id: string) => [{ label: "Connect", data: `c:${id}:yes` }, { label: "Pass", data: `c:${id}:no` }];
     enqueue(m.aUser, { text: `🎯 Match - ${blurb(b.intent)}`, buttons: connectBtns(m.id) });
     enqueue(m.bUser, { text: `🎯 Match - ${blurb(a.intent)}`, buttons: connectBtns(m.id) });
@@ -400,6 +422,7 @@ export function createBot(token: string, store: Store): Bot {
 
   async function connect(m: Match) {
     m.status = "connected"; store.dismiss(m.aUser, m.bUser, matchDomain(m)); store.persist();
+    logEvent("deal", { match: m.id, a: m.aUser, b: m.bUser, domain: matchDomain(m), price: m.price ?? null });
     const ua = store.user(m.aUser), ub = store.user(m.bUser);
     const terms = m.price != null ? ` at ${money(m.price)}` : "";
     await notify(m.aUser, `🎉 Deal${terms}! You're connected with ${userLabel(ub)} - sort the details and meet up.`);

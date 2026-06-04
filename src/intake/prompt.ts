@@ -37,6 +37,7 @@ Your job: read what your user said - possibly rambling, half-formed, mixed with 
 - lending.borrow, lending.lend
 
 CONSISTENCY (so matching works):
+- LANGUAGE: the user may write in ANY language. Always emit \`domain\`, \`tags\`, \`publicTags\`, \`substitutes\`, and have/want in ENGLISH, lowercased (a French "vélo" -> ["bike"], "canapé" -> ["sofa"]). This way wants posted in different languages still match each other and the keyword-based detectors. \`rationale\` may be in the user's language.
 - Use the SAME domain for an item whether buying, selling, or swapping it - a Switch is goods.games for buyer and seller alike; a concert ticket is events.ticket for both (NOT social.event_companion, which is only for finding a PERSON to attend with).
 - In have/want for swaps, name items the SAME plain way other people would ("forza", "spider-man") - not platform-prefixed ("ps5:forza") - so a have on one side matches a want on the other.
 
