@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { anthropic } from "../core/anthropic";
 import { modelId } from "../core/model";
+import { record } from "../core/usage";
 import { cached, cacheKey } from "../intake/cache";
 
 /** A residual intent the deterministic solver left unmatched. */
@@ -138,6 +139,7 @@ export async function proposeEdges(residual: ResidualIntent[]): Promise<FuzzyEdg
       tools: [EDGE_TOOL], tool_choice: { type: "tool", name: "edges" },
       messages: [{ role: "user", content: JSON.stringify(residual) }],
     });
+    record(res.usage);
     if (res.stop_reason === "max_tokens") throw new Error("edges: truncated (raise max_tokens)");
     const b = res.content.find((x) => x.type === "tool_use");
     if (!b || b.type !== "tool_use") throw new Error("edges: no tool call");
@@ -181,6 +183,7 @@ export async function proposeFuzzy(residual: ResidualIntent[]): Promise<FuzzyPro
       tools: [TOOL], tool_choice: { type: "tool", name: "propose" },
       messages: [{ role: "user", content: JSON.stringify(residual) }],
     });
+    record(res.usage);
     if (res.stop_reason === "max_tokens") throw new Error("helper: truncated (raise max_tokens)");
     const b = res.content.find((x) => x.type === "tool_use");
     if (!b || b.type !== "tool_use") throw new Error("helper: no tool call");

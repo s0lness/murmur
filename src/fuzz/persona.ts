@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { anthropic } from "../core/anthropic";
 import { modelId } from "../core/model";
+import { record } from "../core/usage";
 import { cached, cacheKey } from "../intake/cache";
 
 export interface Persona { id: string; name: string; brief: string; wants: string[] }
@@ -46,6 +47,7 @@ export async function makePersonas(n: number): Promise<Persona[]> {
       tools: [TOOL], tool_choice: { type: "tool", name: "people" },
       messages: [{ role: "user", content: `Generate exactly ${n} people.` }],
     });
+    record(res.usage);
     const b = res.content.find((x) => x.type === "tool_use");
     if (!b || b.type !== "tool_use") throw new Error("personas: no tool call");
     return (b.input as { people: { name: string; brief: string; wants: string[] }[] }).people;

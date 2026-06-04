@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { anthropic } from "../core/anthropic";
 import { money } from "../core/currency";
+import { record } from "../core/usage";
 import { modelId } from "../core/model";
 import { cached, cacheKey } from "../intake/cache";
 
@@ -13,6 +14,7 @@ async function ask<T>(tool: Anthropic.Tool, sys: string, user: string, tag: stri
       tools: [tool], tool_choice: { type: "tool", name: tool.name },
       messages: [{ role: "user", content: user }],
     });
+    record(res.usage);
     const b = res.content.find((x) => x.type === "tool_use");
     if (!b || b.type !== "tool_use") throw new Error(`${tag}: no tool call`);
     return b.input as T;

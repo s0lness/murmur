@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { blur, type PrivateIntent } from "../core/intent";
 import { modelId } from "../core/model";
+import { record } from "../core/usage";
 import { cached, cacheKey } from "../intake/cache";
 
 /** One verdict per candidate signal. */
@@ -110,6 +111,7 @@ export class SemanticMatcher {
           },
         ],
       });
+      record(response.usage);
       const block = response.content.find((b) => b.type === "tool_use");
       if (!block || block.type !== "tool_use") throw new Error("semantic matcher: no tool call");
       return (block.input as { matches: Verdict[] }).matches;

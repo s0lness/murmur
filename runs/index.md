@@ -15,3 +15,6 @@
 2026-06-04T10:43:48.341Z N=30+norm+helpclaude-opus-4-7 — deals 8 [deal,deal,deal,deal,deal,deal,deal,deal], cleared 14/30, coverage 37%, groups 0, rings 0, fell 4
 2026-06-04T10:43:49.861Z N=30+norm+helpclaude-opus-4-7 — deals 8 [deal,deal,deal,deal,deal,deal,deal,deal], cleared 14/30, coverage 37%, groups 0, rings 0, fell 4
 2026-06-04T10:44:06.622Z N=30+norm+helpclaude-opus-4-7 — deals 8 [deal,deal,deal,deal,deal,deal,deal,deal], cleared 14/30, coverage 37%, groups 0, rings 0, fell 4
+2026-06-04T11:29:41.456Z N=30+norm+helpclaude-opus-4-7 — deals 8 [deal,deal,deal,deal,deal,deal,deal,deal], cleared 14/30, coverage 37%, groups 0, rings 0, fell 4
+2026-06-04T11:35:48.717Z N=30+norm+help claude-opus-4-7 — deals 8 [deal,deal,deal,deal,deal,deal,deal,deal], cleared 14/30, coverage 37%, groups 0, rings 0, fell 4, cost ~$0.0000 (0 calls)
+2026-06-04T11:37:17.195Z N=7 claude-opus-4-7 — deals 4 [deal,deal,deal,deal], cleared 5/7, coverage 38%, groups 0, rings 0, fell 0, cost ~$1.9676 (29 calls)

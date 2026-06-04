@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { money } from "../core/currency";
 import { type PrivateIntent } from "../core/intent";
+import { costUSD, usageSummary, usageTotal } from "../core/usage";
 import { loadDotenv } from "../intake/env";
 import { LLMDistiller } from "../intake/llmDistiller";
 import { normalizePool } from "../eval/normalize";
@@ -59,9 +60,13 @@ const live = {
   deals: [] as { kind: string; who: string[]; detail: string }[], declines: [] as string[],
   edges: [] as { a: string; b: string; confidence: number; question: string }[],
   metrics: null as null | { cleared: number; pop: number; coveragePct: number; surplus: number; groups: number; rings: number; helper: string },
+  cost: null as null | { calls: number; inputTokens: number; outputTokens: number; usd: number },
 };
+const MODEL = process.env.MURMUR_MODEL ?? "haiku-4-5";
 async function tick(phase?: string, pace = true) {
   if (phase) live.phase = phase;
+  const u = usageTotal();
+  live.cost = { calls: u.calls, inputTokens: u.input + u.cacheWrite + u.cacheRead, outputTokens: u.output, usd: costUSD(MODEL) };
   writeFileSync(LIVE, JSON.stringify(live));
   if (WATCH && pace) await sleep(450);
 }
@@ -226,11 +231,13 @@ console.log(`\n─ unmatched people (${unmatched.length}/${POP}) ─────
 for (const p of unmatched) console.log(`  · ${p.name}: ${p.wants.join(" / ")}`);
 
 const sc = score(settlement, parties);
+const u = usageTotal();
 console.log(`\n─ metrics ─────────────────────────────────────────`);
 console.log(`  people with a deal   ${clearedPeople.size}/${POP}`);
 console.log(`  solver coverage      ${Math.round(sc.coverage * 100)}% of intents   surplus ${sc.surplus}`);
 console.log(`  groups ${groups.length}   rings ${rings.length}`);
 if (helperStats) console.log(helperStats);
+console.log(`  cost (this run)      ${usageSummary(MODEL)}${u.calls === 0 ? "  (fully cached — replay was free)" : ""}`);
 
 live.metrics = {
   cleared: clearedPeople.size, pop: POP, coveragePct: Math.round(sc.coverage * 100),
@@ -242,5 +249,5 @@ await tick("done", false);
 mkdirSync(join(process.cwd(), "runs"), { recursive: true });
 const stamp = new Date().toISOString();
 appendFileSync(join(process.cwd(), "runs", "index.md"),
-  `${stamp} N=${POP}${PLANT ? "+ring" : ""}${CRING ? "+cring" : ""}${NORM ? "+norm" : ""}${HELP ? "+help" : ""}${process.env.MURMUR_MODEL ?? "haiku-4-5"} — deals ${deals.length} [${deals.map((d) => d.kind).join(",") || "none"}], cleared ${clearedPeople.size}/${POP}, coverage ${Math.round(sc.coverage * 100)}%, groups ${groups.length}, rings ${rings.length}, fell ${declines.length}\n`);
+  `${stamp} N=${POP}${PLANT ? "+ring" : ""}${CRING ? "+cring" : ""}${NORM ? "+norm" : ""}${HELP ? "+help" : ""} ${MODEL} — deals ${deals.length} [${deals.map((d) => d.kind).join(",") || "none"}], cleared ${clearedPeople.size}/${POP}, coverage ${Math.round(sc.coverage * 100)}%, groups ${groups.length}, rings ${rings.length}, fell ${declines.length}, cost ~$${costUSD(MODEL).toFixed(4)} (${u.calls} calls)\n`);
 console.log(`\n  logged to runs/index.md\n`);

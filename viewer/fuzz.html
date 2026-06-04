@@ -22,6 +22,7 @@
   .meta { color:var(--mut); display:flex; gap:14px; flex-wrap:wrap; }
   .meta b { color:var(--ink); }
   .flag { background:var(--edge); color:var(--blue); padding:1px 7px; border-radius:10px; font-size:12px; }
+  .cost { background:#1a2410; color:var(--green); border:1px solid #2a3a18; padding:1px 8px; border-radius:10px; font-size:12px; }
   main { display:grid; grid-template-columns: 1.15fr 1fr; gap:16px; padding:16px 20px 60px; align-items:start; }
   .col { display:flex; flex-direction:column; gap:16px; }
   section { background:var(--panel); border:1px solid var(--edge); border-radius:10px; overflow:hidden; }
@@ -101,6 +102,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const kindClass = (k) => k.startsWith('~') ? 'h' : (k==='group'||k==='ring') ? 'm' : '';
 const setText = (el, t) => { if (el.textContent !== t) el.textContent = t; }; // avoid needless writes
+const fmtTok = (n) => n >= 1000 ? (n/1000).toFixed(n>=10000?0:1)+'k' : String(n||0);
 
 /**
  * Incremental list sync: only APPEND new rows (or rebuild on shrink/reset), so
@@ -122,8 +124,10 @@ function render(s) {
   const done = s.phase === 'done';
   $('phase').className = 'phase' + (done ? ' done' : '');
   setText($('phaseText'), done ? 'run complete' : s.phase);
+  const c = s.cost;
+  const costChip = c ? `<span class="cost">${c.calls} calls · ${fmtTok(c.inputTokens)}→${fmtTok(c.outputTokens)} tok · ~$${c.usd.toFixed(4)}${c.calls===0?' (cached)':''}</span>` : '';
   const meta = `<span><b>${s.n}</b> agents</span><span>model <b>${esc(s.model)}</b></span>` +
-    (s.flags?.length ? s.flags.map(f=>`<span class="flag">${esc(f)}</span>`).join('') : '');
+    (s.flags?.length ? s.flags.map(f=>`<span class="flag">${esc(f)}</span>`).join('') : '') + costChip;
   if ($('meta').innerHTML !== meta) $('meta').innerHTML = meta;
 
   // population (rebuild only when the count changes — cards have no animation)
@@ -156,11 +160,14 @@ function render(s) {
   if (s.metrics) {
     const m = s.metrics;
     setText($('helperStat'), m.helper ? m.helper.replace(/^helper\(hybrid\):\s*/,'helper: ') : '');
+    const c = s.cost;
     const mh = [
       ['cleared', `${m.cleared}/${m.pop}`], ['coverage', m.coveragePct+'%'],
       ['surplus', m.surplus], ['groups', m.groups], ['rings', m.rings],
       ['deals', (s.deals?.length||0)], ['fell through', (s.declines?.length||0)],
       ['open', m.pop-m.cleared],
+      ...(c ? [['est. cost', '$'+c.usd.toFixed(4)], ['API calls', c.calls],
+              ['tokens in', fmtTok(c.inputTokens)], ['tokens out', fmtTok(c.outputTokens)]] : []),
     ].map(([l,v])=>`<div class="stat"><div class="v">${esc(v)}</div><div class="l">${l}</div></div>`).join('');
     if ($('metrics').innerHTML !== mh) $('metrics').innerHTML = mh;
   }

@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { modelId } from "../core/model";
+import { record } from "../core/usage";
 import { cached, cacheKey } from "../intake/cache";
 import { loadDotenv } from "../intake/env";
 
@@ -48,6 +49,7 @@ async function move(role: "buyer" | "seller", limit: number, fallback: number | 
       tools: [MOVE_TOOL], tool_choice: { type: "tool", name: "negotiate_move" },
       messages: [{ role: "user", content: render(transcript, role) }],
     });
+    record(res.usage);
     const b = res.content.find((x) => x.type === "tool_use");
     if (!b || b.type !== "tool_use") throw new Error("no move");
     return b.input as Move;

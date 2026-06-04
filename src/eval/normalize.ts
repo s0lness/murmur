@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { anthropic } from "../core/anthropic";
 import { modelId } from "../core/model";
+import { record } from "../core/usage";
 import { cached, cacheKey } from "../intake/cache";
 
 export interface NormIn { id: string; kind: string; domain: string; tags: string[]; have: string[]; want: string[] }
@@ -50,6 +51,7 @@ export async function normalizePool(items: NormIn[]): Promise<Map<string, NormOu
       tools: [TOOL], tool_choice: { type: "tool", name: "normalize_pool" },
       messages: [{ role: "user", content: JSON.stringify(items) }],
     });
+    record(res.usage);
     if (res.stop_reason === "max_tokens") throw new Error("normalize: truncated (raise max_tokens)");
     const b = res.content.find((x) => x.type === "tool_use");
     if (!b || b.type !== "tool_use") throw new Error("normalize: no tool call");
