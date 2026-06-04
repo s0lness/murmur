@@ -3,9 +3,13 @@ import type { PrivateIntent } from "../core/intent";
 export interface Party { id: string; intent: PrivateIntent }
 
 const tags = (i: PrivateIntent) => (i.publicTags ?? i.tags).map((t) => t.toLowerCase());
+/** Word-level overlap — tolerant of the distiller's token drift, so "ps5:forza"
+ *  and "forza", or "tickets" and "ticket" via "concert"/"friday", still connect. */
+const words = (xs: string[]) => new Set(xs.flatMap((t) => t.toLowerCase().split(/[^a-z0-9]+/)).filter((w) => w.length >= 3));
 const overlap = (a: string[], b: string[]) => {
-  const s = new Set(a.map((x) => x.toLowerCase()));
-  return b.some((x) => s.has(x.toLowerCase()));
+  const wa = words(a);
+  for (const w of words(b)) if (wa.has(w)) return true;
+  return false;
 };
 
 // ── Detector A: group-buy aggregation ──
@@ -21,7 +25,7 @@ export function groupBuys(parties: Party[], minBuyers = 2): GroupBuy[] {
   for (const o of offers) {
     if ((o.intent.qty ?? 1) < 2) continue; // need real bulk to distribute
     const buyers = seeks.filter(
-      (s) => s.id !== o.id && s.intent.domain === o.intent.domain && overlap(tags(s.intent), tags(o.intent)),
+      (s) => s.id !== o.id && overlap(tags(s.intent), tags(o.intent)), // tag overlap, not strict same-domain
     );
     if (buyers.length >= minBuyers) out.push({ offer: o, buyers, qty: o.intent.qty ?? 1 });
   }

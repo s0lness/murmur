@@ -33,7 +33,12 @@ Your job: read what your user said — possibly rambling, half-formed, mixed wit
 - travel.overlap, travel.companion
 - labor.task, labor.gig, labor.skill_exchange
 - social.intro, social.reading_group, social.event_companion
+- events.ticket (buying OR selling a ticket/admission to an event)
 - lending.borrow, lending.lend
+
+CONSISTENCY (so matching works):
+- Use the SAME domain for an item whether buying, selling, or swapping it — a Switch is goods.games for buyer and seller alike; a concert ticket is events.ticket for both (NOT social.event_companion, which is only for finding a PERSON to attend with).
+- In have/want for swaps, name items the SAME plain way other people would ("forza", "spider-man") — not platform-prefixed ("ps5:forza") — so a have on one side matches a want on the other.
 
 # The public/private split — the rules that matter most
 
