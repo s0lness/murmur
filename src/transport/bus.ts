@@ -6,6 +6,10 @@ export interface DM {
   from: string;
   to: string;
   sessionId: string;
+  /** The counterparty's broadcast signal this negotiation is about. Lets the
+   *  responder bind to the exact advertised intent (not just "first in domain"),
+   *  so two intents in one domain route to two independent sessions. */
+  signalId: string;
   body: NegMessage;
 }
 
