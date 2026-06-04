@@ -1,6 +1,15 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
+/**
+ * A model-produced 0..1 score (confidence, relevance). The provider JSON schema
+ * stays permissive (type: number) for structured-output compatibility, so this
+ * is where we enforce the invariant: clamp into [0,1] and coerce infinities to 0.
+ * Chosen clamp-everywhere (vs hard-fail) so one weird score can't drop a whole
+ * distill in the live pilot; tests assert the clamp directly.
+ */
+export const score01 = z.number().transform((n) => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0));
+
 /** What the distiller returns per extracted intent. */
 export const DistilledIntent = z.object({
   kind: z.enum(["seek", "offer", "swap", "barter"]),
@@ -14,7 +23,7 @@ export const DistilledIntent = z.object({
   substitutes: z.array(z.string()),
   have: z.array(z.string()),
   want: z.array(z.string()),
-  confidence: z.number(),
+  confidence: score01,
   active: z.boolean(),
   rationale: z.string(),
 });
