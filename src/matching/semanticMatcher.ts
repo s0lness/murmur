@@ -100,7 +100,10 @@ export class SemanticMatcher {
     };
 
     const key = cacheKey("match-v2", modelId(), SYSTEM, myWant, signals);
-    const { value } = await cached<Verdict[]>(key, async () => {
+    // Cache the RAW tool input and parse outside the wrapper, so the clamp runs
+    // on every call. A cache HIT returns stored JSON verbatim, which would
+    // otherwise bypass validation (an older entry could carry an out-of-range score).
+    const { value } = await cached<unknown>(key, async () => {
       const response = await this.client().messages.create({
         model: modelId(),
         max_tokens: 2048,
@@ -119,8 +122,8 @@ export class SemanticMatcher {
       record(response.usage);
       const block = response.content.find((b) => b.type === "tool_use");
       if (!block || block.type !== "tool_use") throw new Error("semantic matcher: no tool call");
-      return JudgeOutput.parse(block.input).matches;
+      return block.input;
     });
-    return value;
+    return JudgeOutput.parse(value).matches;
   }
 }
