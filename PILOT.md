@@ -14,7 +14,7 @@ a fair price.
 ```
 ANTHROPIC_API_KEY=sk-ant-...
 TELEGRAM_BOT_TOKEN=...            # from @BotFather
-MURMUR_MODEL=claude-haiku-4-5    # see "Model & cost" below
+MURMUR_MODEL=claude-opus-4-8     # see "Model & cost" below
 MURMUR_CURRENCY=$                # symbol shown to users ($, £, €)
 ```
 
@@ -44,8 +44,11 @@ multilateral helper). The bot shares `MURMUR_MODEL` with the lab.
 | `claude-sonnet-4-6` | ~$3 / $15 | if match quality dips on hard cases |
 | `claude-opus-4-8` | ~$15 / $75 | the lab / one-off quality runs — too pricey to leave running live |
 
-Recommendation: run the pilot on **haiku**. (The fuzz lab cost meter showed a fresh 30-agent
-opus run ≈ $6; a live bot left on opus would burn credits fast.)
+**Current choice:** running everything on **`claude-opus-4-8`** for now — best quality while
+the pilot is small, cost-streamlining comes later. The dashboard/run cost meter makes the
+spend visible (a fresh 30-agent lab run ≈ $6), so it's easy to revisit. When credits matter,
+drop `MURMUR_MODEL` to `claude-haiku-4-5` (≈15× cheaper) — it handles these structured tasks
+well.
 
 ## What peers do
 
