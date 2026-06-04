@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PrivateIntent } from "../core/intent";
 
-export interface User { id: number; handle?: string; name?: string }
+export interface User { id: number; handle?: string; name?: string; lang?: string }
 export interface StoredIntent { id: string; userId: number; intent: PrivateIntent; createdAt: number }
 export interface Match {
   id: string;

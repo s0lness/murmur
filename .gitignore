@@ -9,3 +9,6 @@ viewer/pipeline.js
 .cache/
 murmur.db.json
 viewer/fuzz-live.json
+
+# pilot event logs (contain real user messages)
+logs/

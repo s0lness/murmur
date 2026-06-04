@@ -16,9 +16,14 @@ ANTHROPIC_API_KEY=sk-ant-...
 TELEGRAM_BOT_TOKEN=...            # from @BotFather
 MURMUR_MODEL=claude-opus-4-8     # see "Model & cost" below
 MURMUR_CURRENCY=$                # symbol shown to users ($, £, €)
+MURMUR_HOST_HANDLE=s0lness       # optional: your Telegram @handle, to DM you /feedback live
 ```
 
 > **Rotate any key that's ever been pasted into a chat.** `.env` is gitignored - keep it that way.
+
+(Telegram can't DM a user by `@handle`, so the bot captures your numeric id the first time you
+message it - just `/start` the bot once after setting `MURMUR_HOST_HANDLE`. A numeric
+`MURMUR_HOST_ID=...` also works if you'd rather set it directly.)
 
 ## Launch
 
@@ -62,7 +67,30 @@ DM the bot in plain words - `"selling my road bike, around 150, around till Sund
    haggling - research showed deterministic pricing is safer);
 4. on mutual *Connect* + *Approve*, drops the two into a direct connection to settle IRL.
 
-Commands: `/start /me /clear /pass /status /rematch /simulate`.
+Commands: `/start /me /status /pass /clear /feedback /help` (plus `/rematch` and `/simulate` for the host).
+
+## Language
+
+Peers can write in **any language**. The distiller normalises tags to English internally, so a
+French "vélo" and an English "bike" still match, and the semantic matcher bridges paraphrase
+across languages too. The bot **replies in the user's own language** (en + fr ship today; add a
+locale by adding one entry to `src/server/i18n.ts`), picked from their Telegram client language.
+Item names inside a reply stay in their canonical English form, since that's the match key.
+
+## Capturing the pilot (logs & feedback)
+
+Everything worth analysing is appended to **`logs/events.jsonl`** (one JSON object per line,
+gitignored - it holds real messages). Event types: `intake`, `match_proposed`, `deal`, `pass`,
+`feedback`. Slice it afterwards, e.g.:
+
+```bash
+jq 'select(.type=="deal")' logs/events.jsonl                    # every deal that closed
+jq -r 'select(.type=="feedback") | .text' logs/events.jsonl     # all feedback
+jq -r 'select(.type=="intake") | .text' logs/events.jsonl       # what people actually asked for
+```
+
+Friends can send notes any time with **`/feedback <message>`** - it lands in the log, and if you
+set `MURMUR_HOST_ID` it also DMs you live.
 
 ## Privacy caveat (tell your friends)
 

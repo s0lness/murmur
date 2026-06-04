@@ -5,22 +5,24 @@ import { barterCycles, groupBuys, type Party } from "../multilateral/detect";
 import { money } from "../core/currency";
 import { buildAliases, proposeEdges, type ResidualIntent } from "../solver/helper";
 import { matchAgainstPool } from "./commons";
+import { logEvent } from "./eventlog";
+import { type Lang, pickLang, STR } from "./i18n";
 import { type Match, type MultiDeal, Store, type StoredIntent, type User } from "./store";
 
-const WELCOME =
-  "👋 I'm your murmur agent.\n\n" +
-  "Just tell me what you want - to buy, sell, swap, find, or offer - in plain words. " +
-  "I'll hold your wants quietly and ping you when someone in the group is a match.\n\n" +
-  "I only ever broadcast a *blur* (category + tags, no price, no name). " +
-  "Heads up: during this pilot the host can see everything - peers only see the blur.\n\n" +
-  "Try: \"selling my road bike, around 200, I'm around till Sunday\"";
+const article = (s: string) => (/^[aeiou]/i.test(s) ? "an" : "a");
 
-const fmt = (i: PrivateIntent) => `${i.kind} · ${i.domain} · ${(i.publicTags ?? i.tags).join(", ")}`;
-
-const blurb = (i: PrivateIntent) => {
-  const verb = i.kind === "seek" ? "is looking for" : i.kind === "offer" ? "is offering" : "wants to " + i.kind;
-  return `someone ${verb}: ${(i.publicTags ?? i.tags).join(", ")} (${i.domain})`;
+/** Plain-language description of an intent in the OWNER's locale (their own
+ *  price is safe to echo). Item tags stay canonical (English) for matching. */
+const human = (i: PrivateIntent, lang: Lang): string => {
+  const t = STR[lang];
+  const item = (i.publicTags ?? i.tags).slice(0, 4).join(" ") || i.domain;
+  const price = i.valuation != null ? ` (~${money(i.valuation)})` : "";
+  const body = lang === "en" ? `${t.verb(i.kind)} ${article(item)} ${item}` : `${t.verb(i.kind)} ${item}`;
+  return `${body}${price}`;
 };
+
+const blurb = (i: PrivateIntent, lang: Lang) =>
+  `${STR[lang].someone} ${STR[lang].blurbVerb(i.kind)}: ${(i.publicTags ?? i.tags).join(", ")}`;
 const itemName = (i: PrivateIntent) => (i.publicTags ?? i.tags).slice(0, 3).join(" ");
 const userLabel = (u?: User) => (u?.handle ? `@${u.handle}` : u?.name ?? "your match");
 
@@ -32,10 +34,24 @@ export function createBot(token: string, store: Store): Bot {
   const awaitingAnswer = new Map<number, { matchId: string; asker: number; question: string }>();
   let simSeq = -1; // synthetic /simulate users get negative ids
 
-  const remember = (u: { id: number; username?: string; first_name?: string }) =>
-    store.upsertUser({ id: u.id, handle: u.username, name: u.first_name });
+  // Host (you) for /feedback forwarding: numeric MURMUR_HOST_ID, or captured the
+  // first time the @MURMUR_HOST_HANDLE user messages the bot (Telegram can't DM
+  // a user by @handle, only by numeric id).
+  let hostId = Number(process.env.MURMUR_HOST_ID) || 0;
+  const HOST_HANDLE = (process.env.MURMUR_HOST_HANDLE ?? "").replace(/^@/, "").toLowerCase();
+
+  const remember = (u: { id: number; username?: string; first_name?: string; language_code?: string }) => {
+    store.upsertUser({ id: u.id, handle: u.username, name: u.first_name, lang: u.language_code });
+    if (HOST_HANDLE && u.username?.toLowerCase() === HOST_HANDLE) hostId = u.id;
+  };
   const other = (m: Match, uid: number) => (uid === m.aUser ? m.bUser : m.aUser);
   const matchDomain = (m: Match) => m.domain ?? store.intent(m.aIntent)?.intent.domain ?? store.intent(m.bIntent)?.intent.domain ?? "";
+
+  // Localisation: ctx replies in the sender's language; outbound notify() in the
+  // recipient's stored language. Default English.
+  const ctxT = (ctx: Context) => STR[pickLang(ctx.from?.language_code)];
+  const langOf = (uid: number): Lang => pickLang(store.user(uid)?.lang);
+  const tr = (uid: number) => STR[langOf(uid)];
 
   // Synthetic counterparts (from /simulate) have negative ids, no Telegram chat.
   const isSim = (uid: number) => uid < 0;
@@ -73,45 +89,68 @@ export function createBot(token: string, store: Store): Bot {
     const lines = q.map((p, i) => `${i + 1}. ${p.text}`).join("\n");
     const kb = new InlineKeyboard();
     q.forEach((p, i) => { for (const b of p.buttons) kb.text(`${i + 1} ${b.label}`, b.data); kb.row(); });
-    await bot.api.sendMessage(uid, `🔔 ${q.length} new:\n${lines}`, { reply_markup: kb });
+    await bot.api.sendMessage(uid, `${tr(uid).newCount(q.length)}\n${lines}`, { reply_markup: kb });
   }
 
-  bot.command("start", (ctx) => { if (ctx.from) remember(ctx.from); return ctx.reply(WELCOME, { parse_mode: "Markdown" }); });
-  bot.command("help", (ctx) => ctx.reply(WELCOME, { parse_mode: "Markdown" }));
+  bot.command("start", (ctx) => { if (ctx.from) remember(ctx.from); return ctx.reply(ctxT(ctx).welcome, { parse_mode: "Markdown" }); });
+  bot.command("help", (ctx) => { if (ctx.from) remember(ctx.from); return ctx.reply(ctxT(ctx).help, { parse_mode: "Markdown" }); });
   bot.command("me", (ctx) => {
     if (!ctx.from) return;
+    remember(ctx.from);
+    const t = ctxT(ctx), lang = pickLang(ctx.from.language_code);
     const list = store.intentsOf(ctx.from.id);
-    return ctx.reply(list.length ? list.map((s) => "• " + fmt(s.intent)).join("\n") : "No wants yet - just tell me one.");
+    if (!list.length) return ctx.reply(t.noWantsYet);
+    const live = list.filter((s) => s.intent.active !== false);
+    const held = list.filter((s) => s.intent.active === false);
+    let msg = t.youAre(live.map((s) => human(s.intent, lang)).join("; "));
+    if (held.length) msg += t.meHolding(held.map((s) => human(s.intent, lang)).join("; "));
+    return ctx.reply(msg);
   });
-  bot.command("clear", (ctx) => { if (!ctx.from) return; store.clearUser(ctx.from.id); return ctx.reply("Cleared your wants."); });
+  bot.command("clear", (ctx) => { if (!ctx.from) return; store.clearUser(ctx.from.id); return ctx.reply(ctxT(ctx).cleared); });
+  bot.command("feedback", (ctx) => {
+    if (!ctx.from) return;
+    remember(ctx.from);
+    const t = ctxT(ctx);
+    const text = ctx.match.trim();
+    if (!text) return ctx.reply(t.feedbackPrompt);
+    logEvent("feedback", { user: ctx.from.id, handle: ctx.from.username, name: ctx.from.first_name, text });
+    const who = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name ?? `user ${ctx.from.id}`;
+    if (hostId && hostId !== ctx.from.id) {
+      void bot.api.sendMessage(hostId, `📣 Feedback from ${who}:\n${text}`).catch(() => {});
+    }
+    return ctx.reply(t.feedbackThanks);
+  });
   bot.command("pass", (ctx) => {
     if (!ctx.from) return;
+    remember(ctx.from);
+    const t = ctxT(ctx);
     const m = activeMatchOf(ctx.from.id);
-    if (!m) return ctx.reply("No active match to pass on.");
+    if (!m) return ctx.reply(t.noActiveMatch);
     m.status = "passed";
     store.dismiss(m.aUser, m.bUser, matchDomain(m));
     store.persist();
-    return ctx.reply("Got it - I won't suggest that match again.");
+    logEvent("pass", { match: m.id, by: ctx.from.id, domain: matchDomain(m) });
+    return ctx.reply(t.passed);
   });
   bot.command("status", (ctx) => {
     if (!ctx.from) return;
+    remember(ctx.from);
+    const lang = pickLang(ctx.from.language_code);
     const mine = store.intentsOf(ctx.from.id).filter((s) => s.intent.active !== false);
     const snap = store.snapshot();
     const realIntents = snap.intents.filter((i) => i.userId >= 0);
     const people = new Set(realIntents.map((i) => i.userId)).size;
     const myMatches = snap.matches.filter((m) => m.aUser === ctx.from!.id || m.bUser === ctx.from!.id);
     const deals = myMatches.filter((m) => m.status === "connected").length;
-    return ctx.reply(
-      `Your live wants (${mine.length}):\n${mine.map((s) => "• " + fmt(s.intent)).join("\n") || "-"}\n\n` +
-        `Pool: ${realIntents.length} wants from ${people} ${people === 1 ? "person" : "people"}.\n` +
-        `Your matches: ${myMatches.length}${deals ? ` (${deals} deal${deals === 1 ? "" : "s"})` : ""}.`,
-    );
+    const mineStr = mine.map((s) => "• " + human(s.intent, lang)).join("\n") || "-";
+    return ctx.reply(STR[lang].status(mineStr, realIntents.length, people, myMatches.length, deals));
   });
   bot.command("rematch", async (ctx) => {
     if (!ctx.from) return;
-    await ctx.reply("Rescanning the pool for matches…");
+    const t = ctxT(ctx);
+    await ctx.reply(t.rematching);
     await settle();
-    await ctx.reply("Done - I've pinged you about any new matches.");
+    await ctx.reply(t.rematchDone);
   });
   // Dev: inject a synthetic counterpart that auto-responds, so you can test the
   // full match → negotiate → deal loop from one account.
@@ -124,7 +163,7 @@ export function createBot(token: string, store: Store): Bot {
     const intents = await distiller.distill({ agentId: `sim${-simId}`, persona: "a simulated friend", utterances: [text] });
     if (intents.length === 0) return ctx.reply("Couldn't distill an intent from that.");
     const stored = intents.map((i) => store.addIntent(simId, i));
-    await ctx.reply(`🧪 Simulated friend posted: ${stored.map((s) => fmt(s.intent)).join("; ")}\nMatching…`);
+    await ctx.reply(`🧪 Simulated friend is ${stored.map((s) => human(s.intent, pickLang(ctx.from!.language_code))).join("; ")}.\nMatching…`);
     await settle();
   });
 
@@ -135,37 +174,38 @@ export function createBot(token: string, store: Store): Bot {
     if (tag === "g") { await handleMultiVote(ctx, matchId, decision); return; }
 
     const m = matchId ? store.match(matchId) : undefined;
-    if (!m) return ctx.answerCallbackQuery("This match expired.");
+    const t = ctxT(ctx);
+    if (!m) return ctx.answerCallbackQuery();
     const side = ctx.from.id === m.aUser ? "a" : ctx.from.id === m.bUser ? "b" : null;
     if (!side) return ctx.answerCallbackQuery();
 
     if (tag === "c") {
-      if (decision === "no") { m.status = "passed"; store.dismiss(m.aUser, m.bUser, matchDomain(m)); store.persist(); await ctx.editMessageText("No worries - passed. I won't suggest this again."); return ctx.answerCallbackQuery(); }
+      if (decision === "no") { m.status = "passed"; store.dismiss(m.aUser, m.bUser, matchDomain(m)); store.persist(); logEvent("pass", { match: m.id, by: ctx.from.id, domain: matchDomain(m) }); await ctx.editMessageText(t.noWorriesPassed); return ctx.answerCallbackQuery(); }
       if (side === "a") m.aConsent = true; else m.bConsent = true;
       store.persist();
-      await ctx.editMessageText("👍 Interested - waiting for the other side…");
+      await ctx.editMessageText(t.interested);
       await ctx.answerCallbackQuery();
       if (m.aConsent && m.bConsent && m.status === "proposed") await negotiate(m);
       return;
     }
 
     if (tag === "d") {
-      if (m.status !== "negotiating") return ctx.answerCallbackQuery("This proposal is no longer open.");
+      if (m.status !== "negotiating") return ctx.answerCallbackQuery();
       if (decision === "abort") {
         m.status = "passed"; store.dismiss(m.aUser, m.bUser, matchDomain(m)); store.persist();
-        await ctx.editMessageText("Aborted.");
-        await bot.api.sendMessage(other(m, ctx.from.id), "The other side aborted the deal.");
+        await ctx.editMessageText(t.aborted);
+        await notify(other(m, ctx.from.id), tr(other(m, ctx.from.id)).otherAborted);
         return ctx.answerCallbackQuery();
       }
       if (decision === "revise") {
         awaitingRevision.set(ctx.from.id, m.id);
-        await ctx.editMessageText("Send me your number (the most you'd pay / least you'd accept) and I'll renegotiate.");
+        await ctx.editMessageText(t.reviseAsk);
         return ctx.answerCallbackQuery();
       }
       // approve
       if (side === "a") m.aApprove = true; else m.bApprove = true;
       store.persist();
-      await ctx.editMessageText(`✅ Approved ${money(m.price!)}. Waiting for the other side…`);
+      await ctx.editMessageText(t.approved(m.price!));
       await ctx.answerCallbackQuery();
       if (m.aApprove && m.bApprove) await connect(m);
       return;
@@ -177,6 +217,7 @@ export function createBot(token: string, store: Store): Bot {
   bot.on("message:text", async (ctx) => {
     if (!ctx.from || ctx.message.text.startsWith("/")) return;
     remember(ctx.from);
+    const t = ctxT(ctx), lang = pickLang(ctx.from.language_code);
 
     // A revision number for a pending proposal?
     const pending = awaitingRevision.get(ctx.from.id);
@@ -184,10 +225,10 @@ export function createBot(token: string, store: Store): Bot {
       awaitingRevision.delete(ctx.from.id);
       const m = store.match(pending);
       const num = Number.parseInt(ctx.message.text.replace(/[^0-9]/g, ""), 10);
-      if (!m || !Number.isFinite(num)) return ctx.reply("Couldn't read a number - just re-state your want if you like.");
+      if (!m || !Number.isFinite(num)) return ctx.reply(t.cantReadNumber);
       const mine = store.intent(ctx.from.id === m.aUser ? m.aIntent : m.bIntent);
       if (mine) { mine.intent.valuation = num; store.persist(); }
-      await ctx.reply(`Got it - renegotiating around ${money(num)}.`);
+      await ctx.reply(t.renegotiating(num));
       m.status = "proposed"; m.aApprove = false; m.bApprove = false; store.persist();
       await negotiate(m);
       return;
@@ -197,8 +238,8 @@ export function createBot(token: string, store: Store): Bot {
     const ans = awaitingAnswer.get(ctx.from.id);
     if (ans) {
       awaitingAnswer.delete(ctx.from.id);
-      await bot.api.sendMessage(ans.asker, `💬 The other party replied: ${ctx.message.text}`);
-      await ctx.reply("Passed it back. 👍");
+      await notify(ans.asker, tr(ans.asker).otherReplied(ctx.message.text));
+      await ctx.reply(t.passedItBack);
       await refineFromAnswer(ctx.from.id, ans.question, ctx.message.text); // sharpen the broadcast
       return;
     }
@@ -235,13 +276,22 @@ export function createBot(token: string, store: Store): Bot {
     for (const id of removeIds) store.removeIntent(id);
     for (const u of updates) store.updateIntent(u.id, u.valuation ?? undefined, u.active);
     const added = adds.map((i) => store.addIntent(ctx.from!.id, i));
+    logEvent("intake", {
+      user: ctx.from.id, text: utterance,
+      added: added.map((s) => ({ kind: s.intent.kind, domain: s.intent.domain, tags: s.intent.publicTags ?? s.intent.tags, active: s.intent.active !== false })),
+      updated: updates.length, removed: removeIds.length,
+    });
 
     const lines: string[] = [];
-    if (added.length) lines.push("Added:\n" + added.map((s) => "• " + fmt(s.intent) + (s.intent.active === false ? "  (holding)" : "")).join("\n"));
-    if (updates.length) lines.push(`Updated ${updates.length} want${updates.length > 1 ? "s" : ""}.`);
-    if (removeIds.length) lines.push(`Dropped ${removeIds.length} (correction/cancel).`);
-    if (lines.length === 0) return ctx.reply("Noted - nothing changed. Tell me something you want to buy, sell, swap, or find.");
-    await ctx.reply(lines.join("\n\n") + "\n\nBroadcasting a blur. I'll ping you on a match.");
+    const broadcast = added.filter((s) => s.intent.active !== false);
+    if (broadcast.length) lines.push(t.gotIt(broadcast.map((s) => human(s.intent, lang)).join("; ")));
+    const holding = added.filter((s) => s.intent.active === false);
+    if (holding.length) lines.push(t.holding(holding.map((s) => human(s.intent, lang)).join("; ")));
+    if (updates.length) lines.push(t.updated(updates.length));
+    if (removeIds.length) lines.push(t.dropped(removeIds.length));
+    if (lines.length === 0) return ctx.reply(t.nothingChanged);
+    if (broadcast.length) lines.push(t.broadcasting);
+    await ctx.reply(lines.join("\n\n"));
 
     // Global batch settlement decides + proposes matches/group-buys/rings.
     await settle();
@@ -257,7 +307,7 @@ export function createBot(token: string, store: Store): Bot {
     }
     if (bestClarify) {
       awaitingClarify.set(ctx.from.id, { intentId: bestClarify.intentId, question: bestClarify.question });
-      await ctx.reply(`🤔 Possible match - one detail first: ${bestClarify.question}`);
+      await ctx.reply(t.clarify(bestClarify.question));
     }
   });
 
@@ -323,9 +373,11 @@ export function createBot(token: string, store: Store): Bot {
     if (isSim(m.aUser)) m.aConsent = true; // sim auto-connects
     if (isSim(m.bUser)) m.bConsent = true;
     store.persist();
-    const connectBtns = (id: string) => [{ label: "Connect", data: `c:${id}:yes` }, { label: "Pass", data: `c:${id}:no` }];
-    enqueue(m.aUser, { text: `🎯 Match - ${blurb(b.intent)}`, buttons: connectBtns(m.id) });
-    enqueue(m.bUser, { text: `🎯 Match - ${blurb(a.intent)}`, buttons: connectBtns(m.id) });
+    logEvent("match_proposed", { match: m.id, a: a.userId, b: b.userId, domain: a.intent.domain, item: itemName(b.intent) });
+    const connectBtns = (id: string, tt: typeof STR[Lang]) => [{ label: tt.btnConnect, data: `c:${id}:yes` }, { label: tt.btnPass, data: `c:${id}:no` }];
+    const ta = tr(m.aUser), tb = tr(m.bUser);
+    enqueue(m.aUser, { text: ta.matchLine(blurb(b.intent, langOf(m.aUser))), buttons: connectBtns(m.id, ta) });
+    enqueue(m.bUser, { text: tb.matchLine(blurb(a.intent, langOf(m.bUser))), buttons: connectBtns(m.id, tb) });
     if (m.aConsent && m.bConsent && m.status === "proposed") await negotiate(m);
   }
 
@@ -356,20 +408,21 @@ export function createBot(token: string, store: Store): Bot {
     if (isSim(m.bUser)) m.bApprove = true;
     store.persist();
     const item = itemName(ai.kind === "offer" ? ai : bi);
-    const kb = (id: string) => new InlineKeyboard()
-      .text("Approve", `d:${id}:approve`).text("Revise", `d:${id}:revise`).text("Abort", `d:${id}:abort`);
-    const msg = `💬 Fair price worked out: *${money(price)}* for *${item}*.\nApprove?`;
-    await notify(m.aUser, msg, { parse_mode: "Markdown", reply_markup: kb(m.id) });
-    await notify(m.bUser, msg, { parse_mode: "Markdown", reply_markup: kb(m.id) });
+    const kb = (id: string, tt: typeof STR[Lang]) => new InlineKeyboard()
+      .text(tt.btnApprove, `d:${id}:approve`).text(tt.btnRevise, `d:${id}:revise`).text(tt.btnAbort, `d:${id}:abort`);
+    for (const uid of [m.aUser, m.bUser]) {
+      const tt = tr(uid);
+      await notify(uid, tt.priceMsg(price, item), { parse_mode: "Markdown", reply_markup: kb(m.id, tt) });
+    }
     if (m.aApprove && m.bApprove) await connect(m);
   }
 
   async function connect(m: Match) {
     m.status = "connected"; store.dismiss(m.aUser, m.bUser, matchDomain(m)); store.persist();
+    logEvent("deal", { match: m.id, a: m.aUser, b: m.bUser, domain: matchDomain(m), price: m.price ?? null });
     const ua = store.user(m.aUser), ub = store.user(m.bUser);
-    const terms = m.price != null ? ` at ${money(m.price)}` : "";
-    await notify(m.aUser, `🎉 Deal${terms}! You're connected with ${userLabel(ub)} - sort the details and meet up.`);
-    await notify(m.bUser, `🎉 Deal${terms}! You're connected with ${userLabel(ua)} - sort the details and meet up.`);
+    await notify(m.aUser, tr(m.aUser).dealMsg(userLabel(ub), m.price ?? null));
+    await notify(m.bUser, tr(m.bUser).dealMsg(userLabel(ua), m.price ?? null));
   }
 
   // ── agent-to-agent question relay ──
@@ -401,23 +454,24 @@ export function createBot(token: string, store: Store): Bot {
       ? `wants to ${ci.kind === "seek" ? "buy" : ci.kind === "offer" ? "sell" : ci.kind} ${(ci.publicTags ?? ci.tags).join(", ")}${ci.valuation != null ? ` (around ${money(ci.valuation)})` : ""}`
       : item;
 
+    const tAsk = tr(asker);
     if (isSim(cp)) {
-      await bot.api.sendMessage(asker, `💬 Their agent: yes, that works (simulated).`);
+      await notify(asker, tAsk.theirAgentSaid("yes, that works (simulated)."));
       return;
     }
 
     const { answer, escalate } = await distiller.answer(question, context);
     if (!escalate && answer.trim()) {
-      await bot.api.sendMessage(asker, `💬 Their agent: ${answer.trim()}`);
+      await notify(asker, tAsk.theirAgentSaid(answer.trim()));
       return;
     }
     if (!underRateLimit(m.id)) {
-      await bot.api.sendMessage(asker, "Their agent is handling a few questions - it'll follow up shortly.");
+      await notify(asker, tAsk.agentHandling);
       return;
     }
     awaitingAnswer.set(cp, { matchId: m.id, asker, question });
-    await bot.api.sendMessage(cp, `🗣 A question about your "${item}" match needs you:\n"${question}"\n\nReply and I'll pass it back.`);
-    await bot.api.sendMessage(asker, "Good question - checking with them directly.");
+    await notify(cp, tr(cp).questionNeedsYou(item, question));
+    await notify(asker, tAsk.goodQuestion);
   }
 
   // ── multilateral: group-buys and barter rings ──
@@ -480,23 +534,23 @@ export function createBot(token: string, store: Store): Bot {
   }
 
   function describeFor(deal: MultiDeal, userId: number): string {
+    const t = tr(userId);
     if (deal.mode === "ring") {
       const me = store.intent(deal.parties.find((p) => p.userId === userId)!.intentId)?.intent;
-      return `You give ${(me?.have ?? []).join("+")} and receive ${(me?.want ?? []).join("+")}.`;
+      return t.ringLeg((me?.have ?? []).join("+"), (me?.want ?? []).join("+"));
     }
     const anchorIntent = store.intent(deal.parties[0]!.intentId)?.intent;
     const item = anchorIntent ? itemName(anchorIntent) : "the item";
     const buyers = deal.parties.length - 1;
-    return userId === deal.parties[0]!.userId
-      ? `${buyers} people want your ${item} - settle as a batch?`
-      : `A group buy is forming for ${item} (${buyers} buyers).`;
+    return userId === deal.parties[0]!.userId ? t.groupAnchorAsk(buyers, item) : t.groupForming(item, buyers);
   }
 
   async function proposeMulti(deal: MultiDeal) {
-    const head = deal.mode === "ring" ? `🔄 ${deal.parties.length}-way barter ring` : "🛒 Group buy forming";
-    const approveBtns = [{ label: "Approve", data: `g:${deal.id}:approve` }, { label: "Pass", data: `g:${deal.id}:pass` }];
     for (const p of deal.parties) {
       if (isSim(p.userId)) { if (!deal.approvals.includes(p.userId)) deal.approvals.push(p.userId); continue; }
+      const t = tr(p.userId);
+      const head = deal.mode === "ring" ? t.ringHead(deal.parties.length) : t.groupHead;
+      const approveBtns = [{ label: t.btnApprove, data: `g:${deal.id}:approve` }, { label: t.btnPass, data: `g:${deal.id}:pass` }];
       enqueue(p.userId, { text: `${head} - ${describeFor(deal, p.userId)}`, buttons: approveBtns });
     }
     store.persist();
@@ -505,13 +559,13 @@ export function createBot(token: string, store: Store): Bot {
 
   async function handleMultiVote(ctx: Context, dealId: string | undefined, decision: string | undefined) {
     const deal = dealId ? store.multiDeal(dealId) : undefined;
-    if (!deal || deal.status !== "proposed") return void ctx.answerCallbackQuery("This deal is closed.");
+    if (!deal || deal.status !== "proposed") return void ctx.answerCallbackQuery();
     const uid = ctx.from!.id;
     if (!deal.parties.some((p) => p.userId === uid)) return void ctx.answerCallbackQuery();
     if (decision === "pass") { if (!deal.declines.includes(uid)) deal.declines.push(uid); }
     else if (!deal.approvals.includes(uid)) deal.approvals.push(uid);
     store.persist();
-    await ctx.editMessageText(decision === "pass" ? "Passed." : "👍 Approved - waiting for the others…");
+    await ctx.editMessageText(decision === "pass" ? ctxT(ctx).multiPassed : ctxT(ctx).multiApproved);
     await ctx.answerCallbackQuery();
     await maybeSettle(deal);
   }
@@ -540,17 +594,18 @@ export function createBot(token: string, store: Store): Bot {
       const giver = deal.parties[(k + 1) % n]!; // I receive what I want from the next
       const receiver = deal.parties[(k - 1 + n) % n]!; // I give what I have to the previous
       const mi = store.intent(me.intentId)?.intent;
-      await notify(me.userId, `🎉 Ring settled! Give ${(mi?.have ?? []).join("+")} to ${userLabel(store.user(receiver.userId))}, receive ${(mi?.want ?? []).join("+")} from ${userLabel(store.user(giver.userId))}.`);
+      await notify(me.userId, tr(me.userId).ringSettled(
+        (mi?.have ?? []).join("+"), userLabel(store.user(receiver.userId)),
+        (mi?.want ?? []).join("+"), userLabel(store.user(giver.userId))));
     }
   }
 
   async function settleGroup(deal: MultiDeal, anchor: { userId: number }, buyers: { userId: number }[]) {
     deal.status = "settled"; store.persist();
     const item = (() => { const ai = store.intent(deal.parties[0]!.intentId)?.intent; return ai ? itemName(ai) : "your item"; })();
-    await notify(anchor.userId, `🎉 Group deal! Selling your ${item} to: ${buyers.map((b) => userLabel(store.user(b.userId))).join(", ")}.`);
+    await notify(anchor.userId, tr(anchor.userId).groupAnchorSettled(item, buyers.map((b) => userLabel(store.user(b.userId))).join(", ")));
     for (const b of buyers) {
-      const others = buyers.length - 1;
-      await notify(b.userId, `🎉 You're in the group buy with ${userLabel(store.user(anchor.userId))} for ${item}${others ? ` (+${others} other buyer${others > 1 ? "s" : ""})` : ""}.`);
+      await notify(b.userId, tr(b.userId).groupBuyerSettled(userLabel(store.user(anchor.userId)), item, buyers.length - 1));
     }
   }
 
@@ -558,6 +613,16 @@ export function createBot(token: string, store: Store): Bot {
   // matches, group-buys, and rings). Cached judges keep it cheap.
   setInterval(() => { settle().catch((e) => console.error("settle error:", e)); }, 3 * 60_000);
 
-  bot.catch((err) => console.error("bot error:", err.error));
+  // Launch-grade safety net: any unhandled throw (an LLM/API hiccup, a network
+  // blip) becomes a friendly message instead of silence or a stuck button.
+  bot.catch(async (err) => {
+    console.error("bot error:", err.error);
+    try {
+      if (err.ctx.callbackQuery) await err.ctx.answerCallbackQuery().catch(() => {});
+      await err.ctx.reply(ctxT(err.ctx).hiccup);
+    } catch (e) {
+      console.error("bot.catch: could not notify user:", e);
+    }
+  });
   return bot;
 }
