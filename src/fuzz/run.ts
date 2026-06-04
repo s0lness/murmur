@@ -9,8 +9,9 @@ import { normalizePool } from "../eval/normalize";
 import { barterCycles, groupBuys, type Party } from "../multilateral/detect";
 import { buildAliases, proposeEdges, type ResidualIntent } from "../solver/helper";
 import { score, solve } from "../solver/solve";
-import { decideMatch as rawMatch, decidePrice as rawPrice } from "./human";
+import { decideMatch as rawMatch, decidePrice as rawPrice, decideRefine } from "./human";
 import { makePersonas, type Persona } from "./persona";
+import { agentClarify } from "./refine";
 
 loadDotenv();
 if (!process.env.ANTHROPIC_API_KEY) { console.error("ANTHROPIC_API_KEY not set."); process.exit(1); }
@@ -18,6 +19,7 @@ if (!process.env.ANTHROPIC_API_KEY) { console.error("ANTHROPIC_API_KEY not set."
 const N = Number(process.argv[2]) || 12;
 const NORM = process.argv.includes("norm"); // canonicalize the pool (domains/tokens) before detection
 const HELP = process.argv.includes("help"); // run the LLM matchmaker failover on the residual
+const REFINE = process.argv.includes("refine"); // agents ask unmatched users a clarifying question, then re-match
 const WATCH = process.argv.includes("watch"); // pace the run so the dashboard can animate it
 const PLANT = process.argv.includes("ring"); // inject a deterministic 3-way swap cycle to exercise the ring path
 const CRING = process.argv.includes("cring"); // inject a ring that closes semantically but breaks on one lexical gap
@@ -55,7 +57,7 @@ const LIVE = join(process.cwd(), "viewer", "fuzz-live.json");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const live = {
   startedAt: new Date().toISOString(), n: POP, model: process.env.MURMUR_MODEL ?? "haiku-4-5",
-  flags: [NORM && "norm", HELP && "help", PLANT && "ring", CRING && "cring"].filter(Boolean),
+  flags: [NORM && "norm", HELP && "help", REFINE && "refine", PLANT && "ring", CRING && "cring"].filter(Boolean),
   phase: "distilling wants…", population: [] as { name: string; brief: string; intents: string[] }[],
   deals: [] as { kind: string; who: string[]; detail: string }[], declines: [] as string[],
   edges: [] as { a: string; b: string; confidence: number; question: string }[],
@@ -131,27 +133,34 @@ const tried = new Set<string>(); // name-pairs already proposed deterministicall
 const pairKey = (a: string, b: string) => [a, b].sort().join("|");
 await tick("deterministic matching");
 
-// pairwise commerce: both must connect, then both approve the price
-for (const t of settlement.trades) {
-  if (t.kind !== "commerce") continue;
-  const bI = intentById.get(t.buyer)!, sI = intentById.get(t.seller)!;
-  const bP = personaOf.get(t.buyer)!, sP = personaOf.get(t.seller)!;
-  if (bP === sP) continue;
+// One commerce trade through the human gate: both connect, then both approve the
+// price. Reused by the deterministic pass and the post-refinement re-match.
+async function settleCommerce(buyerId: string, sellerId: string, label = "deal"): Promise<boolean> {
+  const bI = intentById.get(buyerId)!, sI = intentById.get(sellerId)!;
+  const bP = personaOf.get(buyerId)!, sP = personaOf.get(sellerId)!;
+  if (bP === sP || tried.has(pairKey(bP.name, sP.name))) return false;
   tried.add(pairKey(bP.name, sP.name));
   const bConn = await decideMatch(bP, `Your agent found a seller offering "${item(sI)}". Connect?`);
   const sConn = await decideMatch(sP, `Your agent found a buyer who wants "${item(bI)}". Connect?`);
   if (!bConn.connect || !sConn.connect) {
     const who = !bConn.connect ? bP : sP, reason = !bConn.connect ? bConn.reason : sConn.reason;
     declines.push(`${bP.name}⇄${sP.name} (${item(sI)}): ${who.name} passed — "${reason}"`);
-    await tick(); continue;
+    await tick(); return false;
   }
   const price = irPrice(bI, sI);
-  if (price == null) { deals.push({ kind: "deal", who: [bP.name, sP.name], detail: `${item(sI)} (no price)` }); await tick(); continue; }
+  if (price == null) { deals.push({ kind: label, who: [bP.name, sP.name], detail: `${item(sI)} (no price)` }); await tick(); return true; }
   const bA = await decidePrice(bP, item(sI), price, "buy");
   const sA = await decidePrice(sP, item(sI), price, "sell");
-  if (bA.action === "approve" && sA.action === "approve") deals.push({ kind: "deal", who: [bP.name, sP.name], detail: `${item(sI)} @ ${money(price)}` });
+  const ok = bA.action === "approve" && sA.action === "approve";
+  if (ok) deals.push({ kind: label, who: [bP.name, sP.name], detail: `${item(sI)} @ ${money(price)}` });
   else declines.push(`${bP.name}⇄${sP.name} (${item(sI)} @ ${money(price)}): ${bA.action}/${sA.action} — buyer:"${bA.reason}" seller:"${sA.reason}"`);
-  await tick();
+  await tick(); return ok;
+}
+
+// pairwise commerce: both must connect, then both approve the price
+for (const t of settlement.trades) {
+  if (t.kind !== "commerce") continue;
+  await settleCommerce(t.buyer, t.seller);
 }
 
 // group buys: seller + buyers all decide to join
@@ -234,6 +243,43 @@ if (HELP) {
   helperStats = `  helper(hybrid): ${edges.length} edges → ${augRings.length} rings+subs; ${attempts} attempts → ${recovered} recovered`;
 }
 
+// ── refinement: agents ask unmatched users a clarifying question; an accepted
+//    answer REFINES the broadcast (persists a substitute) so it can re-match ──
+let refineStats = "";
+if (REFINE) {
+  await tick("refinement — agents asking clarifying questions");
+  let asked = 0, refined = 0, recovered = 0;
+  const clearedR = () => new Set(deals.flatMap((d) => d.who));
+  const offerView = parties.filter((p) => p.intent.kind === "offer").map((p) => ({ id: p.id, item: item(p.intent) }));
+  // ask each still-unmatched seeker one clarifying question about the closest offer
+  for (const s of parties.filter((p) => p.intent.kind === "seek" && !clearedR().has(personaOf.get(p.id)!.name))) {
+    const sP = personaOf.get(s.id)!;
+    const cands = offerView.filter((o) => personaOf.get(o.id) !== sP && !tried.has(pairKey(sP.name, personaOf.get(o.id)!.name)));
+    const { candidate, question } = await agentClarify(item(s.intent), cands);
+    if (!candidate || !question || !intentById.has(candidate)) continue;
+    asked++;
+    const ans = await decideRefine(sP, question);
+    live.conversations.push({ persona: sP.name, agent: `💡 ${question}`, human: `${ans.accept ? "✅ yes" : "❌ no"} — ${ans.reason}`, ok: ans.accept });
+    if (ans.accept) {
+      // refine the broadcast: accept the offered item as a substitute for this want
+      const offTags = item(intentById.get(candidate)!).split(" ").filter(Boolean);
+      s.intent.substitutes = [...new Set([...(s.intent.substitutes ?? []), ...offTags])];
+      refined++;
+    }
+    await tick();
+  }
+  // re-match the refined pool; settleCommerce skips pairs already tried
+  if (refined) {
+    for (const t of solve(parties, "coverage").trades) {
+      if (t.kind !== "commerce") continue;
+      const bP = personaOf.get(t.buyer)!, sP = personaOf.get(t.seller)!;
+      if (clearedR().has(bP.name) || clearedR().has(sP.name)) continue;
+      if (await settleCommerce(t.buyer, t.seller, "↻deal")) recovered++;
+    }
+  }
+  refineStats = `  refine: ${asked} asked → ${refined} accepted → ${recovered} recovered`;
+}
+
 // ── report ──
 const clearedPeople = new Set(deals.flatMap((d) => d.who));
 console.log(`\n─ deals (${deals.length}) ─────────────────────────────────`);
@@ -251,6 +297,7 @@ console.log(`  people with a deal   ${clearedPeople.size}/${POP}`);
 console.log(`  solver coverage      ${Math.round(sc.coverage * 100)}% of intents   surplus ${sc.surplus}`);
 console.log(`  groups ${groups.length}   rings ${rings.length}`);
 if (helperStats) console.log(helperStats);
+if (refineStats) console.log(refineStats);
 console.log(`  cost (this run)      ${usageSummary(MODEL)}${u.calls === 0 ? "  (fully cached — replay was free)" : ""}`);
 
 live.metrics = {
@@ -263,5 +310,5 @@ await tick("done", false);
 mkdirSync(join(process.cwd(), "runs"), { recursive: true });
 const stamp = new Date().toISOString();
 appendFileSync(join(process.cwd(), "runs", "index.md"),
-  `${stamp} N=${POP}${PLANT ? "+ring" : ""}${CRING ? "+cring" : ""}${NORM ? "+norm" : ""}${HELP ? "+help" : ""} ${MODEL} — deals ${deals.length} [${deals.map((d) => d.kind).join(",") || "none"}], cleared ${clearedPeople.size}/${POP}, coverage ${Math.round(sc.coverage * 100)}%, groups ${groups.length}, rings ${rings.length}, fell ${declines.length}, cost ~$${costUSD(MODEL).toFixed(4)} (${u.calls} calls)\n`);
+  `${stamp} N=${POP}${PLANT ? "+ring" : ""}${CRING ? "+cring" : ""}${NORM ? "+norm" : ""}${HELP ? "+help" : ""}${REFINE ? "+refine" : ""} ${MODEL} — deals ${deals.length} [${deals.map((d) => d.kind).join(",") || "none"}], cleared ${clearedPeople.size}/${POP}, coverage ${Math.round(sc.coverage * 100)}%, groups ${groups.length}, rings ${rings.length}, fell ${declines.length}, cost ~$${costUSD(MODEL).toFixed(4)} (${u.calls} calls)\n`);
 console.log(`\n  logged to runs/index.md\n`);

@@ -36,6 +36,8 @@ const SYS = `Generate diverse, realistic people for a small local marketplace si
 - Mix categories: electronics, games, furniture, bikes, tickets, clothes, small services, plus a couple of pure swaps/barters and one bulk seller (e.g. several of an item).
 - Engineer the population so SOME wants complement each other across people (a seller for a buyer, a swap that closes a ring) and some don't — a realistic mix, not all-matchable.
 - Vary personality: some decisive, some picky/price-sensitive, some who'd haggle or change their mind.
+- State ALL prices/budgets in US dollars ($).
+- Include a few people whose wants are FLEXIBLE or vaguely-worded (e.g. "a bike to get around the city", "some kind of tablet", "a desk, not fussy") so a clarifying question could unlock a near-substitute match — alongside some who are very specific/picky.
 Call people once.`;
 
 export async function makePersonas(n: number): Promise<Persona[]> {
