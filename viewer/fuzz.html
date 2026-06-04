@@ -100,62 +100,78 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const kindClass = (k) => k.startsWith('~') ? 'h' : (k==='group'||k==='ring') ? 'm' : '';
+const setText = (el, t) => { if (el.textContent !== t) el.textContent = t; }; // avoid needless writes
+
+/**
+ * Incremental list sync: only APPEND new rows (or rebuild on shrink/reset), so
+ * existing DOM nodes are never recreated and their CSS fade-in doesn't re-fire.
+ * That's what was causing the per-poll flicker on deals/edges/declines.
+ */
+function syncList(el, items, rowHtml, emptyHtml) {
+  if (!items.length) { if (el.dataset.n !== '0') { el.innerHTML = `<span class="empty">${emptyHtml}</span>`; el.dataset.n = '0'; } return; }
+  const have = el.dataset.n === undefined ? 0 : Number(el.dataset.n);
+  if (items.length < have || el.firstElementChild?.classList.contains('empty')) { el.innerHTML = ''; } // reset / was-empty
+  const from = (items.length < have) ? 0 : (el.children.length);
+  let html = '';
+  for (let i = from; i < items.length; i++) html += rowHtml(items[i], i);
+  if (html) el.insertAdjacentHTML('beforeend', html);
+  el.dataset.n = String(items.length);
+}
 
 function render(s) {
   const done = s.phase === 'done';
   $('phase').className = 'phase' + (done ? ' done' : '');
-  $('phaseText').textContent = done ? 'run complete' : s.phase;
-  $('meta').innerHTML =
-    `<span><b>${s.n}</b> agents</span><span>model <b>${esc(s.model)}</b></span>` +
+  setText($('phaseText'), done ? 'run complete' : s.phase);
+  const meta = `<span><b>${s.n}</b> agents</span><span>model <b>${esc(s.model)}</b></span>` +
     (s.flags?.length ? s.flags.map(f=>`<span class="flag">${esc(f)}</span>`).join('') : '');
+  if ($('meta').innerHTML !== meta) $('meta').innerHTML = meta;
 
-  // population
-  $('popCount').textContent = (s.population?.length||0) + ' people';
-  $('pop').innerHTML = (s.population||[]).map(p => `
+  // population (rebuild only when the count changes — cards have no animation)
+  setText($('popCount'), (s.population?.length||0) + ' people');
+  syncList($('pop'), s.population||[], p => `
     <div class="card"><div class="n">${esc(p.name)}</div><div class="b">${esc(p.brief||'')}</div>
-    <div class="chips">${(p.intents||[]).map(it=>{const k=it.split(':')[0];return `<span class="chip ${k}">${esc(it)}</span>`}).join('')}</div></div>`).join('')
-    || '<span class="empty">waiting…</span>';
+    <div class="chips">${(p.intents||[]).map(it=>{const k=it.split(':')[0];return `<span class="chip ${k}">${esc(it)}</span>`}).join('')}</div></div>`, 'waiting…');
 
   // deals
-  $('dealCount').textContent = (s.deals?.length||0);
-  $('deals').innerHTML = (s.deals||[]).map(d => `
+  setText($('dealCount'), String(s.deals?.length||0));
+  syncList($('deals'), s.deals||[], d => `
     <div class="row deal ${kindClass(d.kind)}"><span class="w">${esc(d.who.join(' ⇄ '))}</span>
-    <span class="d"> — ${esc(d.kind)} · ${esc(d.detail)}</span></div>`).join('')
-    || '<span class="empty">no deals yet</span>';
+    <span class="d"> — ${esc(d.kind)} · ${esc(d.detail)}</span></div>`, 'no deals yet');
 
   // declines
-  $('declCount').textContent = (s.declines?.length||0);
-  $('decl').innerHTML = (s.declines||[]).map(x => {
+  setText($('declCount'), String(s.declines?.length||0));
+  syncList($('decl'), s.declines||[], x => {
     const i = x.indexOf('—');
     const head = i>0 ? x.slice(0,i) : x, why = i>0 ? x.slice(i) : '';
     return `<div class="row decl">${esc(head)}<span class="why">${esc(why)}</span></div>`;
-  }).join('') || '<span class="empty">none</span>';
+  }, 'none');
 
   // edges
-  $('edgeCount').textContent = (s.edges?.length||0);
-  $('edges').innerHTML = (s.edges||[]).map(e => `
+  setText($('edgeCount'), String(s.edges?.length||0));
+  syncList($('edges'), s.edges||[], e => `
     <div class="row edge"><code>${esc(e.a)}</code> ≈ <code>${esc(e.b)}</code>
-    <span class="d"> (${e.confidence})</span>${e.question?`<div class="q">↳ ${esc(e.question)}</div>`:''}</div>`).join('')
-    || '<span class="empty">no fuzzy edges proposed</span>';
+    <span class="d"> (${e.confidence})</span>${e.question?`<div class="q">↳ ${esc(e.question)}</div>`:''}</div>`, 'no fuzzy edges proposed');
 
-  // metrics
+  // metrics (write only on change — no animation, but avoid DOM churn)
   if (s.metrics) {
     const m = s.metrics;
-    $('helperStat').textContent = m.helper ? m.helper.replace(/^helper\(hybrid\):\s*/,'helper: ') : '';
-    $('metrics').innerHTML = [
+    setText($('helperStat'), m.helper ? m.helper.replace(/^helper\(hybrid\):\s*/,'helper: ') : '');
+    const mh = [
       ['cleared', `${m.cleared}/${m.pop}`], ['coverage', m.coveragePct+'%'],
       ['surplus', m.surplus], ['groups', m.groups], ['rings', m.rings],
       ['deals', (s.deals?.length||0)], ['fell through', (s.declines?.length||0)],
       ['open', m.pop-m.cleared],
     ].map(([l,v])=>`<div class="stat"><div class="v">${esc(v)}</div><div class="l">${l}</div></div>`).join('');
+    if ($('metrics').innerHTML !== mh) $('metrics').innerHTML = mh;
   }
 
   // still-open people (derived: in population, not in any deal)
   const cleared = new Set((s.deals||[]).flatMap(d=>d.who));
   const open = (s.population||[]).filter(p=>!cleared.has(p.name));
-  $('umCount').textContent = open.length;
-  $('um').innerHTML = open.map(p=>`<div class="um"><b>${esc(p.name)}</b> — ${(p.intents||[]).map(esc).join(' · ')}</div>`).join('')
+  setText($('umCount'), String(open.length));
+  const umh = open.map(p=>`<div class="um"><b>${esc(p.name)}</b> — ${(p.intents||[]).map(esc).join(' · ')}</div>`).join('')
     || '<span class="empty">everyone matched 🎉</span>';
+  if ($('um').innerHTML !== umh) $('um').innerHTML = umh;
 }
 
 async function poll() {
