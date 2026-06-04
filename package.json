@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "An ambient-intent layer: agents broadcast blurred wants, listen, match privately, and negotiate.",
+  "engines": {
+    "node": ">=20.19"
+  },
   "scripts": {
     "sim": "tsx src/sim/run.ts",
     "switch": "tsx src/sim/run.ts switch-sale",
@@ -38,6 +41,6 @@
     "@types/node": "^22.10.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.8"
   }
 }
