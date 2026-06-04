@@ -17,6 +17,7 @@
     "charter-sim": "tsx src/sim/charter-sim.ts",
     "pipeline": "tsx src/sim/pipeline-record.ts",
     "server": "tsx src/server/index.ts",
+    "smoke": "tsx src/server/smoke.ts",
     "rematch": "tsx src/server/rematch.ts",
     "multilateral": "tsx src/multilateral/demo.ts",
     "solver": "tsx src/solver/demo.ts",
