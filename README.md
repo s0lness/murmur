@@ -9,6 +9,11 @@ It's the broader sibling of [clawlist](https://github.com/s0lness/clawlist): cla
 transport-first and commerce-shaped; murmur is **intent-first** and domain-agnostic — swaps,
 travel overlaps, intros, tiny labor, not just buy/sell.
 
+> **Where this is now:** there's a live Telegram pilot (`@mmmmurmur_bot`) and an LLM-driven
+> fuzz lab that stress-tests the whole pipeline. Start here:
+> **[PILOT.md](PILOT.md)** (run the bot) · **[FINDINGS.md](FINDINGS.md)** (what we learned) ·
+> **[runs/log.md](runs/log.md)** (every experiment + decision).
+
 ## Vision
 
 We have endless low-grade wants — sell the couch before moving, swap apartments for June,
