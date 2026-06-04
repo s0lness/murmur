@@ -11,12 +11,15 @@ const overlap = (a: string[], b: string[]) => {
 // ── Detector A: group-buy aggregation ──
 export interface GroupBuy { offer: Party; buyers: Party[]; qty: number }
 
-/** One offer that several seekers want — cluster them into a bulk deal. */
+/** One BULK offer (qty ≥ 2) that several seekers want — cluster them into a
+ *  group buy. A single-unit offer with many buyers is NOT a group buy; it's
+ *  contention for one item, handled by the pairwise allocation. */
 export function groupBuys(parties: Party[], minBuyers = 2): GroupBuy[] {
   const offers = parties.filter((p) => p.intent.kind === "offer");
   const seeks = parties.filter((p) => p.intent.kind === "seek");
   const out: GroupBuy[] = [];
   for (const o of offers) {
+    if ((o.intent.qty ?? 1) < 2) continue; // need real bulk to distribute
     const buyers = seeks.filter(
       (s) => s.id !== o.id && s.intent.domain === o.intent.domain && overlap(tags(s.intent), tags(o.intent)),
     );
