@@ -9,17 +9,42 @@ import { type Match, type MultiDeal, Store, type StoredIntent, type User } from 
 
 const WELCOME =
   "👋 I'm your murmur agent.\n\n" +
-  "Just tell me what you want - to buy, sell, swap, find, or offer - in plain words. " +
-  "I'll hold your wants quietly and ping you when someone in the group is a match.\n\n" +
-  "I only ever broadcast a *blur* (category + tags, no price, no name). " +
-  "Heads up: during this pilot the host can see everything - peers only see the blur.\n\n" +
-  "Try: \"selling my road bike, around 200, I'm around till Sunday\"";
+  "Tell me what you want in plain words - to *buy*, *sell*, *swap*, or *find* - and I'll hold it " +
+  "quietly and ping you when someone in the group is a match.\n\n" +
+  "Try things like:\n" +
+  "• selling my road bike, around 200, around till Sunday\n" +
+  "• looking for a cheap monitor under 80\n" +
+  "• swap my breadmaker for a blender\n" +
+  "• anyone got a drill I could borrow this weekend?\n\n" +
+  "I only ever broadcast a *blur* - category + tags, never your price, name, or address. " +
+  "(Pilot note: the host can see everything; peers only see the blur.)\n\n" +
+  "/help anytime to see what I can do.";
 
-const fmt = (i: PrivateIntent) => `${i.kind} · ${i.domain} · ${(i.publicTags ?? i.tags).join(", ")}`;
+const HELP =
+  "Just message me what you want, in plain words - buy, sell, swap, lend, or find. " +
+  "Change your mind any time (\"actually 150\", \"never mind the bike\") and I'll update.\n\n" +
+  "*Commands*\n" +
+  "/me - your current wants\n" +
+  "/status - what's in the pool\n" +
+  "/pass - skip the match I just suggested\n" +
+  "/clear - forget all my wants\n" +
+  "/help - this message";
+
+const article = (s: string) => (/^[aeiou]/i.test(s) ? "an" : "a");
+
+/** Plain-English description of an intent, for the OWNER (their own price is safe to echo). */
+const human = (i: PrivateIntent): string => {
+  const item = (i.publicTags ?? i.tags).slice(0, 4).join(" ") || i.domain;
+  const price = i.valuation != null ? ` (~${money(i.valuation)})` : "";
+  const verb =
+    i.kind === "seek" ? "looking for" : i.kind === "offer" ? "offering" :
+    i.kind === "swap" ? "swapping" : "bartering";
+  return `${verb} ${article(item)} ${item}${price}`;
+};
 
 const blurb = (i: PrivateIntent) => {
-  const verb = i.kind === "seek" ? "is looking for" : i.kind === "offer" ? "is offering" : "wants to " + i.kind;
-  return `someone ${verb}: ${(i.publicTags ?? i.tags).join(", ")} (${i.domain})`;
+  const verb = i.kind === "seek" ? "wants" : i.kind === "offer" ? "is offering" : "wants to " + i.kind;
+  return `someone ${verb}: ${(i.publicTags ?? i.tags).join(", ")}`;
 };
 const itemName = (i: PrivateIntent) => (i.publicTags ?? i.tags).slice(0, 3).join(" ");
 const userLabel = (u?: User) => (u?.handle ? `@${u.handle}` : u?.name ?? "your match");
@@ -77,11 +102,16 @@ export function createBot(token: string, store: Store): Bot {
   }
 
   bot.command("start", (ctx) => { if (ctx.from) remember(ctx.from); return ctx.reply(WELCOME, { parse_mode: "Markdown" }); });
-  bot.command("help", (ctx) => ctx.reply(WELCOME, { parse_mode: "Markdown" }));
+  bot.command("help", (ctx) => ctx.reply(HELP, { parse_mode: "Markdown" }));
   bot.command("me", (ctx) => {
     if (!ctx.from) return;
     const list = store.intentsOf(ctx.from.id);
-    return ctx.reply(list.length ? list.map((s) => "• " + fmt(s.intent)).join("\n") : "No wants yet - just tell me one.");
+    if (!list.length) return ctx.reply("No wants yet - just tell me one, like \"selling my old desk for 30\".");
+    const live = list.filter((s) => s.intent.active !== false);
+    const held = list.filter((s) => s.intent.active === false);
+    let msg = "You're " + live.map((s) => human(s.intent)).join("; ") + ".";
+    if (held.length) msg += "\n\nHolding (not broadcast yet): " + held.map((s) => human(s.intent)).join("; ") + ".";
+    return ctx.reply(msg);
   });
   bot.command("clear", (ctx) => { if (!ctx.from) return; store.clearUser(ctx.from.id); return ctx.reply("Cleared your wants."); });
   bot.command("pass", (ctx) => {
@@ -102,7 +132,7 @@ export function createBot(token: string, store: Store): Bot {
     const myMatches = snap.matches.filter((m) => m.aUser === ctx.from!.id || m.bUser === ctx.from!.id);
     const deals = myMatches.filter((m) => m.status === "connected").length;
     return ctx.reply(
-      `Your live wants (${mine.length}):\n${mine.map((s) => "• " + fmt(s.intent)).join("\n") || "-"}\n\n` +
+      `Your live wants (${mine.length}):\n${mine.map((s) => "• " + human(s.intent)).join("\n") || "- none"}\n\n` +
         `Pool: ${realIntents.length} wants from ${people} ${people === 1 ? "person" : "people"}.\n` +
         `Your matches: ${myMatches.length}${deals ? ` (${deals} deal${deals === 1 ? "" : "s"})` : ""}.`,
     );
@@ -124,7 +154,7 @@ export function createBot(token: string, store: Store): Bot {
     const intents = await distiller.distill({ agentId: `sim${-simId}`, persona: "a simulated friend", utterances: [text] });
     if (intents.length === 0) return ctx.reply("Couldn't distill an intent from that.");
     const stored = intents.map((i) => store.addIntent(simId, i));
-    await ctx.reply(`🧪 Simulated friend posted: ${stored.map((s) => fmt(s.intent)).join("; ")}\nMatching…`);
+    await ctx.reply(`🧪 Simulated friend is ${stored.map((s) => human(s.intent)).join("; ")}.\nMatching…`);
     await settle();
   });
 
@@ -237,11 +267,15 @@ export function createBot(token: string, store: Store): Bot {
     const added = adds.map((i) => store.addIntent(ctx.from!.id, i));
 
     const lines: string[] = [];
-    if (added.length) lines.push("Added:\n" + added.map((s) => "• " + fmt(s.intent) + (s.intent.active === false ? "  (holding)" : "")).join("\n"));
+    const broadcast = added.filter((s) => s.intent.active !== false);
+    if (broadcast.length) lines.push("Got it - you're " + broadcast.map((s) => human(s.intent)).join("; ") + ".");
+    const holding = added.filter((s) => s.intent.active === false);
+    if (holding.length) lines.push("Holding (too vague to broadcast yet): " + holding.map((s) => human(s.intent)).join("; ") + ".");
     if (updates.length) lines.push(`Updated ${updates.length} want${updates.length > 1 ? "s" : ""}.`);
     if (removeIds.length) lines.push(`Dropped ${removeIds.length} (correction/cancel).`);
     if (lines.length === 0) return ctx.reply("Noted - nothing changed. Tell me something you want to buy, sell, swap, or find.");
-    await ctx.reply(lines.join("\n\n") + "\n\nBroadcasting a blur. I'll ping you on a match.");
+    if (broadcast.length) lines.push("I'll broadcast a blur (no price or name) and ping you on a match.");
+    await ctx.reply(lines.join("\n\n"));
 
     // Global batch settlement decides + proposes matches/group-buys/rings.
     await settle();
@@ -558,6 +592,16 @@ export function createBot(token: string, store: Store): Bot {
   // matches, group-buys, and rings). Cached judges keep it cheap.
   setInterval(() => { settle().catch((e) => console.error("settle error:", e)); }, 3 * 60_000);
 
-  bot.catch((err) => console.error("bot error:", err.error));
+  // Launch-grade safety net: any unhandled throw (an LLM/API hiccup, a network
+  // blip) becomes a friendly message instead of silence or a stuck button.
+  bot.catch(async (err) => {
+    console.error("bot error:", err.error);
+    try {
+      if (err.ctx.callbackQuery) await err.ctx.answerCallbackQuery("That hiccuped - try again.").catch(() => {});
+      await err.ctx.reply("⚠️ Something hiccuped on my end - mind trying that again in a moment?");
+    } catch (e) {
+      console.error("bot.catch: could not notify user:", e);
+    }
+  });
   return bot;
 }
