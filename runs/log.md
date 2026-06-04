@@ -40,3 +40,18 @@ Same population across iterations (8 personas, 48% solver coverage / 900 surplus
 3. **Possible double-allocation of a single offer (potential bug — verify).** Sofia's one `concert indie live-music` offer cleared as a deal with **both** Oscar and Camille (both via the no-price path). A single-unit offer should be consumed once. Either `solve()` emitted two trades for the same seller node, or the run loop doesn't track offer consumption. **Decision (todo):** verify node-disjointness on the seller side for qty=1 offers; the no-price auto-deal path is the likely culprit (bypasses any gating).
 
 **Net:** at scale the harness shifts from debugging the *sim* to debugging the *engine*. The three findings are real product/solver issues, with #2 (normalize → rings) the highest-value next experiment.
+
+---
+
+## Session 3 — 2026-06-04 · N=20 · opus-4-7 · ring experiment
+
+Tested finding #2 (does pool normalization unlock barter rings?) and verified the ring pathway end-to-end.
+
+- **`norm` (normalize the pool before detection): rings still 0.** Metrics essentially unchanged (surplus 1050→1090, minor reallocation). **Hypothesis #2 falsified — token drift was not the blocker.**
+- **`ring` (inject a deterministic A→B→C→A 3-way swap) + `norm`: the ring fired and settled.** Detected by `barterCycles`, and all three LLM-humans voted to join → 1 ring deal. **The ring pathway (detect → vote → settle) works end-to-end.**
+
+**Root cause of organic ring scarcity (resolved): representation, not drift.** `barterCycles` only considers intents with `kind === "swap" | "barter"` (have/want graph). But the population's barterable positions are mostly distilled into *separate* `seek` + `offer` commerce intents — e.g. Eli *offers* Zelda and *seeks* a guitar (an economic barter leg) becomes two commerce intents the detector never sees. Only explicit "swap X for Y" utterances enter the cycle graph, and a small random population rarely contains a closed coincidence-of-wants loop among just those.
+
+**Decision / next lever:** generalize `barterCycles` to derive edges from `offer`(≈have) / `seek`(≈want), not only explicit swaps — the group-buy ↔ barter unification. This would let commerce positions participate in cycle detection and surface latent multilateral structure. *Caveat for the live bot:* where liquidity exists, a 2-party commerce match (or money) usually dominates a ring; gate derived rings to cases with no simpler bilateral/coverage settlement, else they're noise. Not yet built — flagged as the highest-value engine change.
+
+Harness flags now: `npm run fuzz <N> [ring] [norm]`.

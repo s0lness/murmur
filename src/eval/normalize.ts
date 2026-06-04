@@ -45,14 +45,17 @@ export async function normalizePool(items: NormIn[]): Promise<Map<string, NormOu
   const key = cacheKey("normalize-v1", modelId(), items);
   const { value } = await cached<NormOut[]>(key, async () => {
     const res = await anthropic().messages.create({
-      model: modelId(), max_tokens: 1500,
+      model: modelId(), max_tokens: 8000,
       system: [{ type: "text", text: SYS, cache_control: { type: "ephemeral" } }],
       tools: [TOOL], tool_choice: { type: "tool", name: "normalize_pool" },
       messages: [{ role: "user", content: JSON.stringify(items) }],
     });
+    if (res.stop_reason === "max_tokens") throw new Error("normalize: truncated (raise max_tokens)");
     const b = res.content.find((x) => x.type === "tool_use");
     if (!b || b.type !== "tool_use") throw new Error("normalize: no tool call");
-    return (b.input as { items: NormOut[] }).items;
+    const items2 = (b.input as { items?: NormOut[] }).items;
+    if (!items2?.length) throw new Error("normalize: empty result");
+    return items2;
   });
   return new Map(value.map((o) => [o.id, o]));
 }

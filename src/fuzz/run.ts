@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { type PrivateIntent } from "../core/intent";
 import { loadDotenv } from "../intake/env";
 import { LLMDistiller } from "../intake/llmDistiller";
+import { normalizePool } from "../eval/normalize";
 import { barterCycles, groupBuys, type Party } from "../multilateral/detect";
 import { score, solve } from "../solver/solve";
 import { decideMatch, decidePrice } from "./human";
@@ -12,6 +13,15 @@ loadDotenv();
 if (!process.env.ANTHROPIC_API_KEY) { console.error("ANTHROPIC_API_KEY not set."); process.exit(1); }
 
 const N = Number(process.argv[2]) || 12;
+const NORM = process.argv.includes("norm"); // canonicalize the pool (domains/tokens) before detection
+const PLANT = process.argv.includes("ring"); // inject a deterministic 3-way swap cycle to exercise the ring path
+
+// A→B→C→A: Ada wants what Ben has, Ben wants what Cleo has, Cleo wants what Ada has.
+const RING: Persona[] = [
+  { id: "r1", name: "Ada Plant", brief: "Decisive, just wants to swap and be done.", wants: ["Swap: I have a mountain bike, want a sewing machine — straight trade"] },
+  { id: "r2", name: "Ben Plant", brief: "Easy-going, happy to barter.", wants: ["Swap: I have a sewing machine, want an acoustic guitar — straight trade"] },
+  { id: "r3", name: "Cleo Plant", brief: "Keen swapper, no cash involved.", wants: ["Swap: I have an acoustic guitar, want a mountain bike — straight trade"] },
+];
 const distiller = new LLMDistiller();
 const item = (i: PrivateIntent) => (i.publicTags ?? i.tags).slice(0, 3).join(" ");
 const irPrice = (b: PrivateIntent, s: PrivateIntent): number | null => {
@@ -23,13 +33,29 @@ const irPrice = (b: PrivateIntent, s: PrivateIntent): number | null => {
 
 console.log(`\n▶ murmur fuzz — ${N} LLM-humans on the real pipeline (model ${process.env.MURMUR_MODEL ?? "haiku-4-5"})\n`);
 
-const personas = await makePersonas(N);
+const personas = [...(await makePersonas(N)), ...(PLANT ? RING : [])];
+const POP = personas.length;
 const personaOf = new Map<string, Persona>(); // intentId → persona
 const all: PrivateIntent[] = [];
 await Promise.all(personas.map(async (p) => {
   const ints = await distiller.distill({ agentId: p.id, persona: p.name, utterances: p.wants });
   for (const i of ints) { personaOf.set(i.id, p); all.push(i); }
 }));
+
+if (NORM) {
+  const norm = await normalizePool(all.map((i) => ({
+    id: i.id, kind: i.kind, domain: i.domain,
+    tags: i.publicTags ?? i.tags, have: i.have ?? [], want: i.want ?? [],
+  })));
+  for (const i of all) {
+    const o = norm.get(i.id);
+    if (!o) continue;
+    i.domain = o.domain; i.tags = o.tags; i.publicTags = o.tags;
+    i.have = o.have; i.want = o.want;
+  }
+  console.log(`  (pool normalized: ${norm.size} intents canonicalized)\n`);
+}
+
 const parties: Party[] = all.filter((i) => i.active !== false).map((i) => ({ id: i.id, intent: i }));
 const intentById = new Map(all.map((i) => [i.id, i]));
 
@@ -97,12 +123,12 @@ for (const d of deals) console.log(`  ✓ ${d.kind.padEnd(6)} ${d.who.join(" ⇄
 console.log(`\n─ fell through (${declines.length}) ──────────────────────`);
 for (const x of declines) console.log(`  ✗ ${x}`);
 const unmatched = personas.filter((p) => !clearedPeople.has(p.name));
-console.log(`\n─ unmatched people (${unmatched.length}/${N}) ────────────────`);
+console.log(`\n─ unmatched people (${unmatched.length}/${POP}) ────────────────`);
 for (const p of unmatched) console.log(`  · ${p.name}: ${p.wants.join(" / ")}`);
 
 const sc = score(settlement, parties);
 console.log(`\n─ metrics ─────────────────────────────────────────`);
-console.log(`  people with a deal   ${clearedPeople.size}/${N}`);
+console.log(`  people with a deal   ${clearedPeople.size}/${POP}`);
 console.log(`  solver coverage      ${Math.round(sc.coverage * 100)}% of intents   surplus ${sc.surplus}`);
 console.log(`  groups ${groups.length}   rings ${rings.length}`);
 
@@ -110,5 +136,5 @@ console.log(`  groups ${groups.length}   rings ${rings.length}`);
 mkdirSync(join(process.cwd(), "runs"), { recursive: true });
 const stamp = new Date().toISOString();
 appendFileSync(join(process.cwd(), "runs", "index.md"),
-  `${stamp} N=${N} ${process.env.MURMUR_MODEL ?? "haiku-4-5"} — deals ${deals.length} [${deals.map((d) => d.kind).join(",") || "none"}], cleared ${clearedPeople.size}/${N}, coverage ${Math.round(sc.coverage * 100)}%, groups ${groups.length}, rings ${rings.length}, fell ${declines.length}\n`);
+  `${stamp} N=${POP}${PLANT ? "+ring" : ""}${NORM ? "+norm" : ""} ${process.env.MURMUR_MODEL ?? "haiku-4-5"} — deals ${deals.length} [${deals.map((d) => d.kind).join(",") || "none"}], cleared ${clearedPeople.size}/${POP}, coverage ${Math.round(sc.coverage * 100)}%, groups ${groups.length}, rings ${rings.length}, fell ${declines.length}\n`);
 console.log(`\n  logged to runs/index.md\n`);
