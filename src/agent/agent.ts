@@ -17,9 +17,6 @@ export class Agent {
   readonly pseudonym: string;
   readonly persona: string;
   private sessions = new Map<string, Session>();
-  /** signalId -> my private intent id, for the intents I've broadcast. Lets a
-   *  responder bind an incoming negotiation to the exact advertised intent. */
-  private published = new Map<string, string>();
 
   constructor(
     identity: Identity,
@@ -48,7 +45,6 @@ export class Agent {
     for (const intent of this.intents) {
       if (intent.active === false) continue;
       const signal = blur(intent, this.pseudonym);
-      this.published.set(signal.id, intent.id);
       this.ctx.log.append({
         t: this.ctx.now(),
         type: "signal_published",
@@ -119,8 +115,9 @@ export class Agent {
       // Responder side: first contact. Bind to the EXACT advertised intent the
       // opener's signal referenced (not "first intent in this domain") so a
       // second intent in the same domain gets its own session and the right one.
-      const intentId = this.published.get(m.signalId);
-      const intent = intentId ? this.intents.find((i) => i.id === intentId) : undefined;
+      // signal.id === intent.id (see blur), so we derive the binding statelessly
+      // from the live intents - no in-memory map to lose across a restart.
+      const intent = this.intents.find((i) => i.id === m.signalId);
       if (!intent) return;
       session = {
         id: m.sessionId,

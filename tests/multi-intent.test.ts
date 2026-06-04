@@ -44,10 +44,11 @@ describe("multi-intent agents in one domain (issue #1)", () => {
     expect(ids.size).toBe(2);
   });
 
-  it("binds each deal to the correct intent (one switch-range, one ps5-range price)", () => {
-    // If the responder bound both to the first-in-domain intent, both prices
-    // would land in the same band. Correct binding spans both ZOPAs.
-    expect(Math.min(...prices)).toBeLessThanOrEqual(240); // switch ZOPA [180,240]
-    expect(Math.max(...prices)).toBeGreaterThanOrEqual(350); // ps5 ZOPA [350,430]
+  it("binds each deal to the correct intent (exactly one in each ZOPA band)", () => {
+    // Wrong binding (both to the first-in-domain intent) would put both prices
+    // in one band. Correct binding => exactly one price in the switch ZOPA
+    // [180,240] and exactly one in the ps5 ZOPA [350,430].
+    expect(prices.filter((p) => p >= 180 && p <= 240)).toHaveLength(1);
+    expect(prices.filter((p) => p >= 350 && p <= 430)).toHaveLength(1);
   });
 });
