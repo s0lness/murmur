@@ -9,7 +9,7 @@ import { normalizePool } from "../eval/normalize";
 import { barterCycles, groupBuys, type Party } from "../multilateral/detect";
 import { buildAliases, proposeEdges, type ResidualIntent } from "../solver/helper";
 import { score, solve } from "../solver/solve";
-import { decideMatch, decidePrice } from "./human";
+import { decideMatch as rawMatch, decidePrice as rawPrice } from "./human";
 import { makePersonas, type Persona } from "./persona";
 
 loadDotenv();
@@ -61,6 +61,7 @@ const live = {
   edges: [] as { a: string; b: string; confidence: number; question: string }[],
   metrics: null as null | { cleared: number; pop: number; coveragePct: number; surplus: number; groups: number; rings: number; helper: string },
   cost: null as null | { calls: number; inputTokens: number; outputTokens: number; usd: number },
+  conversations: [] as { persona: string; agent: string; human: string; ok: boolean }[],
 };
 const MODEL = process.env.MURMUR_MODEL ?? "haiku-4-5";
 async function tick(phase?: string, pace = true) {
@@ -71,6 +72,19 @@ async function tick(phase?: string, pace = true) {
   if (WATCH && pace) await sleep(450);
 }
 await tick();
+
+// Logging wrappers: capture each agent→human exchange (the question murmur put to
+// the user's LLM stand-in, and how they answered) so the dashboard can show it.
+async function decideMatch(p: Persona, prompt: string) {
+  const r = await rawMatch(p, prompt);
+  live.conversations.push({ persona: p.name, agent: prompt, human: `${r.connect ? "✅ connect" : "❌ pass"} — ${r.reason}`, ok: r.connect });
+  return r;
+}
+async function decidePrice(p: Persona, item: string, price: number, side: "buy" | "sell") {
+  const r = await rawPrice(p, item, price, side);
+  live.conversations.push({ persona: p.name, agent: `💬 Price for "${item}": ${money(price)} (you ${side})`, human: `${r.action}${r.newLimit != null ? ` → ${money(r.newLimit)}` : ""} — ${r.reason}`, ok: r.action === "approve" });
+  return r;
+}
 
 const personaOf = new Map<string, Persona>(); // intentId → persona
 const all: PrivateIntent[] = [];

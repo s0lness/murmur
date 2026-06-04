@@ -58,6 +58,14 @@
   .stat .v { font-size:22px; font-weight:800; }
   .stat .l { color:var(--mut); font-size:11px; text-transform:uppercase; letter-spacing:.5px; margin-top:2px; }
   .empty { color:var(--mut); font-style:italic; font-size:12.5px; }
+  .full { grid-column:1 / -1; }
+  .conv { max-height:46vh; }
+  .ex { border-left:3px solid var(--edge); padding:6px 10px; border-radius:7px; background:#10151d; animation:in .35s ease; }
+  .ex.no { border-left-color:var(--red); }
+  .ex.yes { border-left-color:var(--green); }
+  .ex .who { font-weight:700; font-size:12px; color:var(--blue); }
+  .ex .a { color:var(--mut); font-size:12.5px; margin-top:2px; }
+  .ex .h { font-size:12.5px; margin-top:2px; }
   @media(max-width:880px){ main{grid-template-columns:1fr} }
 </style>
 </head>
@@ -96,6 +104,10 @@
       <div class="body" id="um"></div>
     </section>
   </div>
+  <section class="full">
+    <div class="head"><span class="t">agent ⇄ human · what each user's LLM stand-in was asked and answered</span><span class="c" id="convCount"></span></div>
+    <div class="body conv" id="conv"></div>
+  </section>
 </main>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -171,6 +183,12 @@ function render(s) {
     ].map(([l,v])=>`<div class="stat"><div class="v">${esc(v)}</div><div class="l">${l}</div></div>`).join('');
     if ($('metrics').innerHTML !== mh) $('metrics').innerHTML = mh;
   }
+
+  // agent <-> human conversations (append-only)
+  setText($('convCount'), String(s.conversations?.length||0) + ' exchanges');
+  syncList($('conv'), s.conversations||[], x => `
+    <div class="ex ${x.ok?'yes':'no'}"><div class="who">${esc(x.persona)}</div>
+    <div class="a">🤖 ${esc(x.agent)}</div><div class="h">🗣 ${esc(x.human)}</div></div>`, 'no exchanges yet');
 
   // still-open people (derived: in population, not in any deal)
   const cleared = new Set((s.deals||[]).flatMap(d=>d.who));
