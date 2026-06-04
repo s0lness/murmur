@@ -27,5 +27,5 @@ startDashboard(store);
 
 console.log("murmur-server: connecting to Telegram (long-poll)…");
 bot.start({
-  onStart: (info) => console.log(`@${info.username} online — DM the bot to onboard. Ctrl+C to stop.`),
+  onStart: (info) => console.log(`@${info.username} online - DM the bot to onboard. Ctrl+C to stop.`),
 });

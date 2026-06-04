@@ -3,7 +3,7 @@
  * emits condition / quality / quantity adjectives as tags ("used", "free",
  * "set-of-3"); without this filter a yoga mat and an iPad "match" on `used` and
  * a bulk seller (qty>1) sprays that false positive across the whole pool.
- * Keep this list to genuinely generic words — never item or brand names, and
+ * Keep this list to genuinely generic words - never item or brand names, and
  * never sizes ("56cm", "size-6") which ARE discriminative.
  */
 export const STOPWORDS = new Set([

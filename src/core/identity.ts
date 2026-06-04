@@ -1,12 +1,12 @@
 export interface Identity {
-  /** Stable local id — never broadcast. */
+  /** Stable local id - never broadcast. */
   agentId: string;
   /** What the rest of the world sees. */
   pseudonymId: string;
 }
 
-/** M0: one stable pseudonym per agent. Rotation-per-signal is a later milestone
- *  (it's what makes real web-of-trust scoring necessary — see TrustGraph). */
+/** One stable pseudonym per agent today. Rotation-per-signal is future work
+ *  (it's what makes real web-of-trust scoring necessary - see TrustGraph). */
 export function makeIdentity(agentId: string): Identity {
   return { agentId, pseudonymId: `anon-${fnv1a(agentId)}` };
 }
@@ -21,9 +21,9 @@ function fnv1a(s: string): string {
 }
 
 /**
- * Minimal web-of-trust stub. M0 trusts everyone so trustGate never blocks.
- * M2 replaces this with a signed vouch graph + trust-path scoring, which is
- * also where rotating pseudonyms start to matter.
+ * Minimal web-of-trust stub. Today it trusts everyone so trustGate never blocks.
+ * Future work replaces this with a signed vouch graph + trust-path scoring, which
+ * is also where rotating pseudonyms start to matter.
  */
 export class TrustGraph {
   private vouches = new Map<string, Set<string>>();
@@ -37,7 +37,7 @@ export class TrustGraph {
     set.add(to);
   }
 
-  /** M0 stub: everyone is trusted (1.0). */
+  /** Stub: everyone is trusted (1.0). */
   scoreFor(_pseudonymId: string): number {
     return 1;
   }

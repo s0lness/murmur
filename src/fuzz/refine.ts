@@ -17,13 +17,13 @@ const TOOL: Anthropic.Tool = {
     additionalProperties: false,
     properties: {
       candidate: { type: "string", description: "id of the offer worth asking about, or \"\" if none is plausible" },
-      question: { type: "string", description: "one short question to the user, or \"\" — e.g. 'There's a hybrid bike available — would that work for your commute?'" },
+      question: { type: "string", description: "one short question to the user, or \"\" - e.g. 'There's a hybrid bike available - would that work for your commute?'" },
     },
     required: ["candidate", "question"],
   },
 };
 
-const SYS = `You are a user's marketplace agent. Their WANT did not match any exact offer. Look at the available offers and decide if ONE is a plausible-enough substitute to be worth a single question to your user (e.g. a hybrid for a road bike, a different-brand tablet, a nearby size). If so, return that offer's id and a short, specific question. If nothing is a reasonable substitute, return candidate "" and question "" — do NOT force a bad suggestion. One question only.`;
+const SYS = `You are a user's marketplace agent. Their WANT did not match any exact offer. Look at the available offers and decide if ONE is a plausible-enough substitute to be worth a single question to your user (e.g. a hybrid for a road bike, a different-brand tablet, a nearby size). If so, return that offer's id and a short, specific question. If nothing is a reasonable substitute, return candidate "" and question "" - do NOT force a bad suggestion. One question only.`;
 
 export async function agentClarify(want: string, offers: { id: string; item: string }[]): Promise<ClarifyOut> {
   if (!offers.length) return { candidate: "", question: "" };

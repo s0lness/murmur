@@ -9,10 +9,10 @@ import { type Match, type MultiDeal, Store, type StoredIntent, type User } from 
 
 const WELCOME =
   "👋 I'm your murmur agent.\n\n" +
-  "Just tell me what you want — to buy, sell, swap, find, or offer — in plain words. " +
+  "Just tell me what you want - to buy, sell, swap, find, or offer - in plain words. " +
   "I'll hold your wants quietly and ping you when someone in the group is a match.\n\n" +
   "I only ever broadcast a *blur* (category + tags, no price, no name). " +
-  "Heads up: during this pilot the host can see everything — peers only see the blur.\n\n" +
+  "Heads up: during this pilot the host can see everything - peers only see the blur.\n\n" +
   "Try: \"selling my road bike, around 200, I'm around till Sunday\"";
 
 const fmt = (i: PrivateIntent) => `${i.kind} · ${i.domain} · ${(i.publicTags ?? i.tags).join(", ")}`;
@@ -81,7 +81,7 @@ export function createBot(token: string, store: Store): Bot {
   bot.command("me", (ctx) => {
     if (!ctx.from) return;
     const list = store.intentsOf(ctx.from.id);
-    return ctx.reply(list.length ? list.map((s) => "• " + fmt(s.intent)).join("\n") : "No wants yet — just tell me one.");
+    return ctx.reply(list.length ? list.map((s) => "• " + fmt(s.intent)).join("\n") : "No wants yet - just tell me one.");
   });
   bot.command("clear", (ctx) => { if (!ctx.from) return; store.clearUser(ctx.from.id); return ctx.reply("Cleared your wants."); });
   bot.command("pass", (ctx) => {
@@ -91,7 +91,7 @@ export function createBot(token: string, store: Store): Bot {
     m.status = "passed";
     store.dismiss(m.aUser, m.bUser, matchDomain(m));
     store.persist();
-    return ctx.reply("Got it — I won't suggest that match again.");
+    return ctx.reply("Got it - I won't suggest that match again.");
   });
   bot.command("status", (ctx) => {
     if (!ctx.from) return;
@@ -102,7 +102,7 @@ export function createBot(token: string, store: Store): Bot {
     const myMatches = snap.matches.filter((m) => m.aUser === ctx.from!.id || m.bUser === ctx.from!.id);
     const deals = myMatches.filter((m) => m.status === "connected").length;
     return ctx.reply(
-      `Your live wants (${mine.length}):\n${mine.map((s) => "• " + fmt(s.intent)).join("\n") || "—"}\n\n` +
+      `Your live wants (${mine.length}):\n${mine.map((s) => "• " + fmt(s.intent)).join("\n") || "-"}\n\n` +
         `Pool: ${realIntents.length} wants from ${people} ${people === 1 ? "person" : "people"}.\n` +
         `Your matches: ${myMatches.length}${deals ? ` (${deals} deal${deals === 1 ? "" : "s"})` : ""}.`,
     );
@@ -111,7 +111,7 @@ export function createBot(token: string, store: Store): Bot {
     if (!ctx.from) return;
     await ctx.reply("Rescanning the pool for matches…");
     await settle();
-    await ctx.reply("Done — I've pinged you about any new matches.");
+    await ctx.reply("Done - I've pinged you about any new matches.");
   });
   // Dev: inject a synthetic counterpart that auto-responds, so you can test the
   // full match → negotiate → deal loop from one account.
@@ -140,10 +140,10 @@ export function createBot(token: string, store: Store): Bot {
     if (!side) return ctx.answerCallbackQuery();
 
     if (tag === "c") {
-      if (decision === "no") { m.status = "passed"; store.dismiss(m.aUser, m.bUser, matchDomain(m)); store.persist(); await ctx.editMessageText("No worries — passed. I won't suggest this again."); return ctx.answerCallbackQuery(); }
+      if (decision === "no") { m.status = "passed"; store.dismiss(m.aUser, m.bUser, matchDomain(m)); store.persist(); await ctx.editMessageText("No worries - passed. I won't suggest this again."); return ctx.answerCallbackQuery(); }
       if (side === "a") m.aConsent = true; else m.bConsent = true;
       store.persist();
-      await ctx.editMessageText("👍 Interested — waiting for the other side…");
+      await ctx.editMessageText("👍 Interested - waiting for the other side…");
       await ctx.answerCallbackQuery();
       if (m.aConsent && m.bConsent && m.status === "proposed") await negotiate(m);
       return;
@@ -184,10 +184,10 @@ export function createBot(token: string, store: Store): Bot {
       awaitingRevision.delete(ctx.from.id);
       const m = store.match(pending);
       const num = Number.parseInt(ctx.message.text.replace(/[^0-9]/g, ""), 10);
-      if (!m || !Number.isFinite(num)) return ctx.reply("Couldn't read a number — just re-state your want if you like.");
+      if (!m || !Number.isFinite(num)) return ctx.reply("Couldn't read a number - just re-state your want if you like.");
       const mine = store.intent(ctx.from.id === m.aUser ? m.aIntent : m.bIntent);
       if (mine) { mine.intent.valuation = num; store.persist(); }
-      await ctx.reply(`Got it — renegotiating around ${money(num)}.`);
+      await ctx.reply(`Got it - renegotiating around ${money(num)}.`);
       m.status = "proposed"; m.aApprove = false; m.bApprove = false; store.persist();
       await negotiate(m);
       return;
@@ -224,7 +224,7 @@ export function createBot(token: string, store: Store): Bot {
 
     await ctx.replyWithChatAction("typing");
     // Reconcile against the user's standing portfolio: a message can remove
-    // (corrections/cancellations), update (price), or add — not only add.
+    // (corrections/cancellations), update (price), or add - not only add.
     const existing = store.intentsOf(ctx.from.id).map((s) => ({
       id: s.id, kind: s.intent.kind, domain: s.intent.domain,
       tags: s.intent.publicTags ?? s.intent.tags,
@@ -240,7 +240,7 @@ export function createBot(token: string, store: Store): Bot {
     if (added.length) lines.push("Added:\n" + added.map((s) => "• " + fmt(s.intent) + (s.intent.active === false ? "  (holding)" : "")).join("\n"));
     if (updates.length) lines.push(`Updated ${updates.length} want${updates.length > 1 ? "s" : ""}.`);
     if (removeIds.length) lines.push(`Dropped ${removeIds.length} (correction/cancel).`);
-    if (lines.length === 0) return ctx.reply("Noted — nothing changed. Tell me something you want to buy, sell, swap, or find.");
+    if (lines.length === 0) return ctx.reply("Noted - nothing changed. Tell me something you want to buy, sell, swap, or find.");
     await ctx.reply(lines.join("\n\n") + "\n\nBroadcasting a blur. I'll ping you on a match.");
 
     // Global batch settlement decides + proposes matches/group-buys/rings.
@@ -257,7 +257,7 @@ export function createBot(token: string, store: Store): Bot {
     }
     if (bestClarify) {
       awaitingClarify.set(ctx.from.id, { intentId: bestClarify.intentId, question: bestClarify.question });
-      await ctx.reply(`🤔 Possible match — one detail first: ${bestClarify.question}`);
+      await ctx.reply(`🤔 Possible match - one detail first: ${bestClarify.question}`);
     }
   });
 
@@ -271,7 +271,7 @@ export function createBot(token: string, store: Store): Bot {
 
   /** Batch settlement (the solver, live): build commerce edges with the SEMANTIC
    *  matcher, gate by IR (fallback), then a coverage allocation (most-constrained
-   *  seeker first, qty-aware) decides who clears — then group-buys + barter rings.
+   *  seeker first, qty-aware) decides who clears - then group-buys + barter rings.
    *  Replaces greedy per-pair proposing with a global, IR-respecting allocation. */
   async function settle() {
     const active = store.pool().filter((s) => s.intent.active !== false);
@@ -298,7 +298,7 @@ export function createBot(token: string, store: Store): Bot {
 
   /** A relayed answer often carries new detail ("yes, it's the OLED 256gb").
    *  Feed it back through reconcile to SHARPEN the answerer's broadcast, then
-   *  re-settle — the agent negotiates *understanding*, the solver handles price. */
+   *  re-settle - the agent negotiates *understanding*, the solver handles price. */
   async function refineFromAnswer(userId: number, question: string, answer: string) {
     const existing = store.intentsOf(userId).map((s) => ({
       id: s.id, kind: s.intent.kind, domain: s.intent.domain,
@@ -317,15 +317,15 @@ export function createBot(token: string, store: Store): Bot {
   }
 
   async function propose(a: StoredIntent, b: StoredIntent) {
-    if (store.isDismissed(a.userId, b.userId, a.intent.domain)) return; // already passed/dealt — don't re-suggest
+    if (store.isDismissed(a.userId, b.userId, a.intent.domain)) return; // already passed/dealt - don't re-suggest
     if (store.findMatch(a.intent.id, b.intent.id)) return;
     const m = store.addMatch(a.userId, b.userId, a.intent.id, b.intent.id, a.intent.domain);
     if (isSim(m.aUser)) m.aConsent = true; // sim auto-connects
     if (isSim(m.bUser)) m.bConsent = true;
     store.persist();
     const connectBtns = (id: string) => [{ label: "Connect", data: `c:${id}:yes` }, { label: "Pass", data: `c:${id}:no` }];
-    enqueue(m.aUser, { text: `🎯 Match — ${blurb(b.intent)}`, buttons: connectBtns(m.id) });
-    enqueue(m.bUser, { text: `🎯 Match — ${blurb(a.intent)}`, buttons: connectBtns(m.id) });
+    enqueue(m.aUser, { text: `🎯 Match - ${blurb(b.intent)}`, buttons: connectBtns(m.id) });
+    enqueue(m.bUser, { text: `🎯 Match - ${blurb(a.intent)}`, buttons: connectBtns(m.id) });
     if (m.aConsent && m.bConsent && m.status === "proposed") await negotiate(m);
   }
 
@@ -341,7 +341,7 @@ export function createBot(token: string, store: Store): Bot {
     let price: number | null = null;
     if (buyerI?.valuation != null && sellerI?.valuation != null) {
       // IR-aware fair price: midpoint of the fallback-bounded zone of agreement.
-      // (Research showed LLM haggling is worse than this on price — see src/research/bargaining.ts.)
+      // (Research showed LLM haggling is worse than this on price - see src/research/bargaining.ts.)
       const floor = Math.max(sellerI.valuation, sellerI.fallback ?? 0);
       const ceil = Math.min(buyerI.valuation, buyerI.fallback ?? Infinity);
       if (ceil < floor) { await connect(m); return; } // no agreeable price after fallbacks
@@ -368,8 +368,8 @@ export function createBot(token: string, store: Store): Bot {
     m.status = "connected"; store.dismiss(m.aUser, m.bUser, matchDomain(m)); store.persist();
     const ua = store.user(m.aUser), ub = store.user(m.bUser);
     const terms = m.price != null ? ` at ${money(m.price)}` : "";
-    await notify(m.aUser, `🎉 Deal${terms}! You're connected with ${userLabel(ub)} — sort the details and meet up.`);
-    await notify(m.bUser, `🎉 Deal${terms}! You're connected with ${userLabel(ua)} — sort the details and meet up.`);
+    await notify(m.aUser, `🎉 Deal${terms}! You're connected with ${userLabel(ub)} - sort the details and meet up.`);
+    await notify(m.bUser, `🎉 Deal${terms}! You're connected with ${userLabel(ua)} - sort the details and meet up.`);
   }
 
   // ── agent-to-agent question relay ──
@@ -412,12 +412,12 @@ export function createBot(token: string, store: Store): Bot {
       return;
     }
     if (!underRateLimit(m.id)) {
-      await bot.api.sendMessage(asker, "Their agent is handling a few questions — it'll follow up shortly.");
+      await bot.api.sendMessage(asker, "Their agent is handling a few questions - it'll follow up shortly.");
       return;
     }
     awaitingAnswer.set(cp, { matchId: m.id, asker, question });
     await bot.api.sendMessage(cp, `🗣 A question about your "${item}" match needs you:\n"${question}"\n\nReply and I'll pass it back.`);
-    await bot.api.sendMessage(asker, "Good question — checking with them directly.");
+    await bot.api.sendMessage(asker, "Good question - checking with them directly.");
   }
 
   // ── multilateral: group-buys and barter rings ──
@@ -488,7 +488,7 @@ export function createBot(token: string, store: Store): Bot {
     const item = anchorIntent ? itemName(anchorIntent) : "the item";
     const buyers = deal.parties.length - 1;
     return userId === deal.parties[0]!.userId
-      ? `${buyers} people want your ${item} — settle as a batch?`
+      ? `${buyers} people want your ${item} - settle as a batch?`
       : `A group buy is forming for ${item} (${buyers} buyers).`;
   }
 
@@ -497,7 +497,7 @@ export function createBot(token: string, store: Store): Bot {
     const approveBtns = [{ label: "Approve", data: `g:${deal.id}:approve` }, { label: "Pass", data: `g:${deal.id}:pass` }];
     for (const p of deal.parties) {
       if (isSim(p.userId)) { if (!deal.approvals.includes(p.userId)) deal.approvals.push(p.userId); continue; }
-      enqueue(p.userId, { text: `${head} — ${describeFor(deal, p.userId)}`, buttons: approveBtns });
+      enqueue(p.userId, { text: `${head} - ${describeFor(deal, p.userId)}`, buttons: approveBtns });
     }
     store.persist();
     await maybeSettle(deal);
@@ -511,7 +511,7 @@ export function createBot(token: string, store: Store): Bot {
     if (decision === "pass") { if (!deal.declines.includes(uid)) deal.declines.push(uid); }
     else if (!deal.approvals.includes(uid)) deal.approvals.push(uid);
     store.persist();
-    await ctx.editMessageText(decision === "pass" ? "Passed." : "👍 Approved — waiting for the others…");
+    await ctx.editMessageText(decision === "pass" ? "Passed." : "👍 Approved - waiting for the others…");
     await ctx.answerCallbackQuery();
     await maybeSettle(deal);
   }

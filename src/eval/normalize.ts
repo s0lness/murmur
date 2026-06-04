@@ -37,7 +37,7 @@ const TOOL: Anthropic.Tool = {
 
 const SYS = `You are a consistency normalizer for a matching market. You receive a batch of items (buy/sell/swap intents). Different agents described the SAME things inconsistently. Rewrite ONLY for consistency so matching works:
 - Give the SAME \`domain\` to the same kind of item regardless of buy/sell/swap (a concert ticket is the same domain for the seller and every buyer).
-- Use the SAME plain token for the same item across agents, so a \`have\` on one side equals a \`want\` on the other ("forza", "spider-man" — never "ps5:forza" on one side and "forza" on the other; never "tickets" vs "ticket").
+- Use the SAME plain token for the same item across agents, so a \`have\` on one side equals a \`want\` on the other ("forza", "spider-man" - never "ps5:forza" on one side and "forza" on the other; never "tickets" vs "ticket").
 Keep meaning identical; do not invent or drop items. Return every item. Call normalize_pool once.`;
 
 /** Auto-repair: canonicalize domains + item tokens across the pool so the

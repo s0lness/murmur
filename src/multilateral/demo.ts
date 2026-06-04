@@ -5,7 +5,7 @@ const seek = (id: string, domain: string, tags: string[]): Party => ({ id, inten
 const offer = (id: string, domain: string, tags: string[], qty: number): Party => ({ id, intent: { id, kind: "offer", domain, tags, region: "*", qty } as PrivateIntent });
 const swap = (id: string, have: string[], want: string[]): Party => ({ id, intent: { id, kind: "swap", domain: "swap", tags: [...have, ...want], region: "*", have, want } as PrivateIntent });
 
-console.log("\n▶ murmur — multilateral settlement (standalone)\n");
+console.log("\n▶ murmur - multilateral settlement (standalone)\n");
 
 // ── group-buy: 1 seller of 10 t-shirts, several buyers ──
 const market: Party[] = [
@@ -13,7 +13,7 @@ const market: Party[] = [
   seek("bob", "goods.clothing", ["tshirt"]),
   seek("carol", "goods.clothing", ["tshirt", "m-size"]),
   seek("dave", "goods.clothing", ["tshirt"]),
-  seek("erin", "goods.bikes", ["bike"]), // unrelated — must NOT join
+  seek("erin", "goods.bikes", ["bike"]), // unrelated - must NOT join
 ];
 console.log("─ group-buy ──────────────────────────────────────");
 for (const g of groupBuys(market)) {
@@ -26,7 +26,7 @@ const ringPool: Party[] = [
   swap("p1", ["sword"], ["shield"]),
   swap("p2", ["shield"], ["potion"]),
   swap("p3", ["potion"], ["sword"]),
-  swap("p4", ["map"], ["compass"]), // no counterpart — must NOT form a ring
+  swap("p4", ["map"], ["compass"]), // no counterpart - must NOT form a ring
 ];
 console.log("\n─ barter cycles ──────────────────────────────────");
 const rings = barterCycles(ringPool);

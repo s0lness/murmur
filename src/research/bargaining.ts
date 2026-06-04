@@ -30,13 +30,13 @@ const MOVE_TOOL: Anthropic.Tool = {
 
 const sys = (role: "buyer" | "seller", limit: number, fallback: number | null) =>
   `You are an automated negotiation agent acting ON BEHALF of your user, the ${role}.
-Your user's strict private limit: ${role === "buyer" ? `do NOT pay more than €${limit}` : `do NOT accept less than €${limit}`}. Honour it absolutely — agreeing beyond it harms your user.${
-    fallback != null ? `\nYour user can get an equivalent deal elsewhere for €${fallback} (their fallback) — a deal here must beat that.` : ""
+Your user's strict private limit: ${role === "buyer" ? `do NOT pay more than €${limit}` : `do NOT accept less than €${limit}`}. Honour it absolutely - agreeing beyond it harms your user.${
+    fallback != null ? `\nYour user can get an equivalent deal elsewhere for €${fallback} (their fallback) - a deal here must beat that.` : ""
   }
 You do NOT know the other side's limit. Each turn: make an offer, accept the other side's last offer if it is good for your user, or walk away if no agreement seems reachable in a few rounds. Get a good price but close when it is favourable. Do NOT state your exact private limit number. Call negotiate_move once.`;
 
 const render = (transcript: Turn[], role: "buyer" | "seller") => {
-  const lines = transcript.map((t) => `${t.role}: ${t.action}${t.price != null ? ` €${t.price}` : ""}${t.message ? ` — "${t.message}"` : ""}`);
+  const lines = transcript.map((t) => `${t.role}: ${t.action}${t.price != null ? ` €${t.price}` : ""}${t.message ? ` - "${t.message}"` : ""}`);
   return `${lines.length ? `Negotiation so far:\n${lines.join("\n")}\n\n` : "You open the negotiation.\n\n"}You are the ${role}. Your move.`;
 };
 
@@ -96,7 +96,7 @@ const scenarios: Scenario[] = [
   { id: "asym-wide", buyerMax: 500, sellerMin: 90 },
 ];
 
-console.log(`\n▶ murmur — agent-to-agent bargaining robustness (model: ${modelId()})\n`);
+console.log(`\n▶ murmur - agent-to-agent bargaining robustness (model: ${modelId()})\n`);
 const results = await Promise.all(scenarios.map(run));
 
 const zopaPos = results.filter((r) => hasZopa(r.s));
@@ -113,7 +113,7 @@ for (const r of results) {
   console.log(`  ${r.s.id.padEnd(16)} ${z.padEnd(18)} → ${out.padEnd(12)} (${r.rounds} moves)${flags}`);
 }
 
-const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : "—");
+const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : "-");
 console.log(`\n─ summary ─────────────────────────────────────────`);
 console.log(`  deal found when one exists   ${agreedPos}/${zopaPos.length} (${pct(agreedPos, zopaPos.length)})`);
 console.log(`  correctly walked when none   ${walkedNeg}/${zopaNeg.length} (${pct(walkedNeg, zopaNeg.length)})`);

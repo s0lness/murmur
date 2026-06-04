@@ -93,7 +93,7 @@ export class LLMDistiller implements Distiller {
 
   /**
    * Reconcile a new message against the user's standing portfolio: returns
-   * intents to remove, updates, and brand-new adds — so corrections replace
+   * intents to remove, updates, and brand-new adds - so corrections replace
    * instead of piling up. Not cached (it's interactive, per-user state).
    */
   async reconcile(

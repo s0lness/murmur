@@ -27,7 +27,7 @@ const HUMAN_SYS = (brief: string, wants: string[]) =>
 Who you are: ${brief}
 What you actually want right now:
 ${wants.map((w) => `- ${w}`).join("\n")}
-Decide CONSISTENTLY with these wants. "Connect" is low-stakes — it just means you're interested enough to see the price and details, which come next; only PASS if it clearly isn't one of your wants. Honour your budget at the price step; you may revise, abort, or change your mind like a real person.`;
+Decide CONSISTENTLY with these wants. "Connect" is low-stakes - it just means you're interested enough to see the price and details, which come next; only PASS if it clearly isn't one of your wants. Honour your budget at the price step; you may revise, abort, or change your mind like a real person.`;
 
 const CONNECT_TOOL: Anthropic.Tool = {
   name: "decide_match", description: "Connect or pass on this match.", strict: true,
@@ -49,7 +49,7 @@ export const decideMatch = (p: Who, prompt: string) =>
 
 export const decideRefine = (p: Who, question: string) =>
   ask<{ accept: boolean; reason: string }>(REFINE_TOOL, HUMAN_SYS(p.brief, p.wants),
-    `Your agent asks: "${question}"\nAnswer honestly as yourself — only say yes if it genuinely fits one of your wants; say no if it's not what you actually want.`, "fuzz-refine");
+    `Your agent asks: "${question}"\nAnswer honestly as yourself - only say yes if it genuinely fits one of your wants; say no if it's not what you actually want.`, "fuzz-refine");
 
 export const decidePrice = (p: Who, item: string, price: number, side: "buy" | "sell") =>
   ask<{ action: "approve" | "revise" | "abort"; newLimit: number | null; reason: string }>(

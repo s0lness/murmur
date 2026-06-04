@@ -20,7 +20,7 @@ const truth: Party[] = [
   swap("p1", ["sword"], ["shield"]),
   swap("p2", ["shield"], ["potion"]),
   swap("p3", ["potion"], ["sword"]),
-  swap("p4", ["map"], ["compass"]), // no counterpart — never clears
+  swap("p4", ["map"], ["compass"]), // no counterpart - never clears
 ];
 
 /** Reveal more of each person's order as the level rises. */
@@ -35,7 +35,7 @@ function view(p: Party, level: number): Party {
 
 const levels = ["tags only", "+ reservation", "+ substitutes", "+ barter"];
 
-console.log("\n▶ murmur — does richer expression buy better settlements?\n");
+console.log("\n▶ murmur - does richer expression buy better settlements?\n");
 console.log("  level            surplus   cleared   coverage   rings   note");
 for (let lv = 0; lv < levels.length; lv++) {
   const expressed = truth.map((p) => view(p, lv));

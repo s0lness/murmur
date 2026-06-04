@@ -20,7 +20,7 @@ const batch: Party[] = [
   swap("p3", ["potion"], ["sword"]),
 ];
 
-console.log("\n▶ murmur — batch solver + competition (standalone)\n");
+console.log("\n▶ murmur - batch solver + competition (standalone)\n");
 
 const strategies: Strategy[] = ["surplus", "coverage", "baseline"];
 const results = strategies.map((st) => {

@@ -16,7 +16,7 @@ const COMPLEMENT: Record<Kind, Kind> = {
 
 /**
  * Matching ladder, rung 1: cleartext predicate match over the blurred signal.
- * Deliberately permissive — it routes *interest*, and lets the private
+ * Deliberately permissive - it routes *interest*, and lets the private
  * negotiation do the real filtering (price/ZOPA, double-coincidence, trust).
  * Later rungs replace the tag overlap with bloom filters -> PSI -> MPC scoring.
  */

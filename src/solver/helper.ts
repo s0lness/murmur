@@ -17,7 +17,7 @@ export interface ResidualIntent {
 /** One participant's side of a fuzzy match: what they hand over, what they receive. */
 export interface Leg { id: string; gives: string; gets: string }
 
-/** A fuzzy match the helper recovered from the residual. Not a settlement —
+/** A fuzzy match the helper recovered from the residual. Not a settlement -
  *  a proposal that must clear the human gate (the question IS the refinement). */
 export interface FuzzyProposal {
   legs: Leg[]; // per-participant give/get so each person sees only their own side
@@ -68,19 +68,19 @@ const TOOL: Anthropic.Tool = {
   },
 };
 
-const SYS = `You are a MATCHMAKER agent — a failover that runs only on intents the deterministic solver could NOT match. Your job is recall, not precision: surface plausible deals the rigid solver structurally misses, each as a proposal a human will confirm. The solver already handled every clean match, so do NOT re-propose obvious same-item buy/sell pairs.
+const SYS = `You are a MATCHMAKER agent - a failover that runs only on intents the deterministic solver could NOT match. Your job is recall, not precision: surface plausible deals the rigid solver structurally misses, each as a proposal a human will confirm. The solver already handled every clean match, so do NOT re-propose obvious same-item buy/sell pairs.
 
 Look specifically for what a token/keyword matcher cannot see:
-- CROSS-REPRESENTATION BARTER: someone OFFERS X and SEEKS Y, while another OFFERS Y and SEEKS X — an economic swap hidden as four separate commerce intents. Propose it as a 2-party barter.
-- RINGS: a closed loop A wants what B has, B wants what C has, C wants what A has — across offer/seek positions, not just explicit swaps. Order ids give→get.
+- CROSS-REPRESENTATION BARTER: someone OFFERS X and SEEKS Y, while another OFFERS Y and SEEKS X - an economic swap hidden as four separate commerce intents. Propose it as a 2-party barter.
+- RINGS: a closed loop A wants what B has, B wants what C has, C wants what A has - across offer/seek positions, not just explicit swaps. Order ids give→get.
 - NEAR-SUBSTITUTES: a seeker whose want is close-but-not-equal to an offer (road bike vs hybrid; "any Zelda" vs a specific Zelda title; iPad vs Android tablet). Propose with a question that asks if the substitute is acceptable.
 
 Hard rules (a bad proposal wastes a human's attention and erodes trust):
 - GROUND every leg in stated fields only. Pair an explicit have/offer on one side with an explicit want/seek on the other. NEVER invent a capability or item a person did not state (e.g. do not assume a furniture seller offers assembly, or that "gym sessions" covers "moving help").
-- Every participant must RECEIVE something they explicitly want. If a person only wants cash, a barter gives them nothing — do not put them in a barter/ring (money-preferring sellers are not barter candidates).
+- Every participant must RECEIVE something they explicitly want. If a person only wants cash, a barter gives them nothing - do not put them in a barter/ring (money-preferring sellers are not barter candidates).
 - Fill legs so each person's "gets" is what THEY want and "gives" is what THEY have. A ring must close: one leg's "gives" is the previous leg's "gets", all the way around. Never write a leg where someone gives away an item that isn't theirs.
 - confidence: ~0.8 for a tight cross-rep swap with exact want↔have, ~0.4 for a genuine near-substitute. Below ~0.35, don't propose.
-- Most residuals have NO real counterpart. Returning an EMPTY list is the correct, expected outcome — do not manufacture matches to look useful. Quality over quantity.
+- Most residuals have NO real counterpart. Returning an EMPTY list is the correct, expected outcome - do not manufacture matches to look useful. Quality over quantity.
 Call propose once.`;
 
 // ── hybrid: LLM emits fuzzy edges, the deterministic detector closes the loops ──
@@ -117,7 +117,7 @@ const EDGE_TOOL: Anthropic.Tool = {
   },
 };
 
-const EDGE_SYS = `You are a FUZZY-EQUIVALENCE ORACLE. You are NOT building deals — a deterministic engine does that. Your only job: spot pairs of item tokens that a keyword matcher would treat as different but that actually refer to substitutable things, where one token appears on a HAVE/OFFER side and the other on a WANT/SEEK side of the residual.
+const EDGE_SYS = `You are a FUZZY-EQUIVALENCE ORACLE. You are NOT building deals - a deterministic engine does that. Your only job: spot pairs of item tokens that a keyword matcher would treat as different but that actually refer to substitutable things, where one token appears on a HAVE/OFFER side and the other on a WANT/SEEK side of the residual.
 
 Examples of edges to emit: "ps5" ⇄ "games console"; "road bike" ⇄ "commuter bike"; "mirrorless camera" ⇄ "camera"; "ikea kallax" ⇄ "shelving".
 

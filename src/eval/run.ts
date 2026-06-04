@@ -60,7 +60,7 @@ function diagnose(f: Failure, map: Map<string, PrivateIntent>): string {
     const unmet = ins.filter((i) => !tok(i.want).some((w) => allHave.has(w)));
     if (unmet.length) return `want/have token mismatch (e.g. ${unmet[0]?.id}: want [${(unmet[0]?.want ?? []).join(",")}])`;
   }
-  return "no shared tokens / IR — check tags, valuation, fallback";
+  return "no shared tokens / IR - check tags, valuation, fallback";
 }
 
 console.log(`\n▶ murmur eval (${SCENARIOS.length} scenarios, model ${process.env.MURMUR_MODEL ?? "haiku-4-5"}${autoFix ? ", auto-fix ON" : ""})\n`);
@@ -85,7 +85,7 @@ for (const sc of SCENARIOS) {
   if (failures.length === 0) { console.log(`  ✓ ${sc.name}${note}`); passed++; }
   else {
     console.log(`  ✗ ${sc.name}${note}`);
-    for (const f of failures) console.log(`      ${f.kind} [${f.ids.join(", ")}] — ${f.why}`);
+    for (const f of failures) console.log(`      ${f.kind} [${f.ids.join(", ")}] - ${f.why}`);
   }
 }
 console.log(`\n  ${passed}/${SCENARIOS.length} passed${autoFix ? ` (${fixed} via auto-fix)` : ""}.\n`);

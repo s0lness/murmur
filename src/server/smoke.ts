@@ -20,7 +20,7 @@ const store = new Store();
 try { store.purgeSims(); store.purgeOrphanMatches(); store.purgeExpired(1); ok("store constructs + housekeeping"); }
 catch (e) { bad("store", e); }
 
-// 2. Bot constructs with all handlers wired (dummy token — no network until start())
+// 2. Bot constructs with all handlers wired (dummy token - no network until start())
 try { createBot(process.env.TELEGRAM_BOT_TOKEN ?? "123456:DUMMY_TOKEN_FOR_SMOKE", store); ok("createBot wires all handlers"); }
 catch (e) { bad("createBot", e); }
 
@@ -35,5 +35,5 @@ try {
   ok("dashboard serves /api/state");
 } catch (e) { bad("dashboard", e); }
 
-console.log(failures === 0 ? "\nsmoke: PASS — bot is wired and constructs cleanly.\n" : `\nsmoke: FAIL (${failures}).\n`);
+console.log(failures === 0 ? "\nsmoke: PASS - bot is wired and constructs cleanly.\n" : `\nsmoke: FAIL (${failures}).\n`);
 process.exit(failures === 0 ? 0 : 1);

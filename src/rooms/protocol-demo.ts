@@ -12,7 +12,7 @@ const deals: { item: string; buyer: Buyer; seller: Seller }[] = [
   { item: "ps5", buyer: { max: 430 }, seller: { min: 350, list: 460 } },
 ];
 
-console.log("\n▶ protocol menu — same pairs, different rooms\n");
+console.log("\n▶ protocol menu - same pairs, different rooms\n");
 for (const r of rooms) {
   console.log(`─ room: ${r.id}   (allows: ${r.allowed.join(", ")}) ─`);
   for (const d of deals) {

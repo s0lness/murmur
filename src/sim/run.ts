@@ -9,7 +9,7 @@ if (!build) {
   process.exit(1);
 }
 
-console.log(`\n▶ murmur — scenario: ${name}`);
+console.log(`\n▶ murmur - scenario: ${name}`);
 const world = buildWorld(build());
 world.run();
 console.log(formatReport(computeMetrics(world.log, world.agents)));

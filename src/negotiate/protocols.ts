@@ -1,7 +1,7 @@
 /**
  * The negotiation menu. A room's charter says which protocols are allowed; a
  * per-deal "Protocol Agreement" picks one. Same two parties can reach the same
- * deal very differently — different message cost and different surplus split.
+ * deal very differently - different message cost and different surplus split.
  *
  * Reserves are private: buyer.max = most they'll pay, seller.min = least they'll
  * take. seller.list is the public asking price.
@@ -32,7 +32,7 @@ export function sealedBid(b: Buyer, s: Seller): Outcome | null {
   return b.max >= s.min ? split("sealed-bid", round((b.max + s.min) / 2), b, s, 2) : null;
 }
 
-/** Iterative haggling — converges near the midpoint but costs many rounds. */
+/** Iterative haggling - converges near the midpoint but costs many rounds. */
 export function naturalLanguage(b: Buyer, s: Seller): Outcome | null {
   if (b.max < s.min) return null;
   // simulate alternating 40%-of-gap concessions from list↔lowball to count rounds

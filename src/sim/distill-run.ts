@@ -17,7 +17,7 @@ try {
     }
   }
 } catch {
-  /* no .env file — rely on the ambient environment */
+  /* no .env file - rely on the ambient environment */
 }
 
 const scenarios: Record<string, () => PersonaUtterances[]> = {
@@ -43,7 +43,7 @@ if (!process.env.ANTHROPIC_API_KEY) {
 const personas = build();
 const distiller = new LLMDistiller();
 
-console.log(`\n▶ murmur M1 — distilling ${personas.length} personas (${name})…\n`);
+console.log(`\n▶ murmur - distilling ${personas.length} personas (${name})…\n`);
 
 // Intake phase: words → structured intents, concurrently.
 const specs: AgentSpec[] = await Promise.all(
@@ -70,7 +70,7 @@ for (const spec of specs) {
         ` · conf ${Math.round((i.confidence ?? 1) * 100)}%${price}`,
     );
   }
-  if (spec.intents.length === 0) console.log("   (no intent — correctly silent)");
+  if (spec.intents.length === 0) console.log("   (no intent - correctly silent)");
 }
 
 // Run the (unchanged) sim on the distilled intents.

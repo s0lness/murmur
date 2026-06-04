@@ -8,7 +8,7 @@ export interface PostResult {
 
 /**
  * A venue governed by a Charter. The room hands every joiner the etiquette to
- * read, but ENFORCES admission, schema, and rate itself — so an agent that
+ * read, but ENFORCES admission, schema, and rate itself - so an agent that
  * skipped or ignored the etiquette still gets reined in.
  */
 export class Room {

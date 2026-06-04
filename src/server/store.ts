@@ -16,7 +16,7 @@ export interface Match {
   bApprove?: boolean;
 }
 
-/** A pair of people who already settled a category (passed or dealt) — survives
+/** A pair of people who already settled a category (passed or dealt) - survives
  *  intent re-statement, so we never re-suggest them for it. */
 interface Dismissal { a: number; b: number; domain: string }
 
@@ -38,7 +38,7 @@ interface Data {
   dismissals: Dismissal[]; multiDeals: MultiDeal[]; seq: number;
 }
 
-/** Tiny JSON-file store — the whole `murmur.db.json`. No native deps; fine at
+/** Tiny JSON-file store - the whole `murmur.db.json`. No native deps; fine at
  *  friends-group scale, survives restarts. */
 export class Store {
   private path: string;
@@ -102,7 +102,7 @@ export class Store {
     return m;
   }
 
-  /** Remember that a pair has settled a category — never suggest them for it again. */
+  /** Remember that a pair has settled a category - never suggest them for it again. */
   dismiss(u1: number, u2: number, domain: string) {
     const [a, b] = u1 < u2 ? [u1, u2] : [u2, u1];
     if (!this.data.dismissals.some((d) => d.a === a && d.b === b && d.domain === domain)) {
@@ -155,7 +155,7 @@ export class Store {
     if (this.data.matches.length !== before) this.save();
   }
 
-  /** Drop synthetic /simulate users (negative ids) — called at startup so each
+  /** Drop synthetic /simulate users (negative ids) - called at startup so each
    *  run begins clean of test counterparts. */
   purgeSims() {
     this.data.intents = this.data.intents.filter((i) => i.userId >= 0);

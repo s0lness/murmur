@@ -1,7 +1,7 @@
 import type { PublicSignal } from "../core/intent";
 
 /**
- * A Charter is the rules of a room — in two parts:
+ * A Charter is the rules of a room - in two parts:
  *  - `etiquette`: natural-language norms the agent is told to read and follow.
  *  - everything else: MACHINE-ENFORCED constraints the room applies regardless
  *    of whether the agent read or obeyed the etiquette. This enforced half is
@@ -9,7 +9,7 @@ import type { PublicSignal } from "../core/intent";
  */
 export interface Charter {
   id: string;
-  /** NL rules an agent ingests on join (non-binding — cooperative agents only). */
+  /** NL rules an agent ingests on join (non-binding - cooperative agents only). */
   etiquette: string;
   /** Enforced: minimum trust to be admitted. */
   minTrust: number;

@@ -42,7 +42,7 @@ async function evaluate(distilled: DistilledAgent[]) {
   }
   const offerAgentByIntent = new Map(offers.map((o) => [o.intent.id, o.agentId]));
 
-  // keyword baseline — swept to its BEST F1 (fairest shot)
+  // keyword baseline - swept to its BEST F1 (fairest shot)
   let bestKw = { t: 0, pairs: new Set<string>(), sc: score(new Set()) };
   for (const t of [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]) {
     const pairs = new Set<string>();
@@ -52,7 +52,7 @@ async function evaluate(distilled: DistilledAgent[]) {
     if (score(pairs).f1 > bestKw.sc.f1) bestKw = { t, pairs, sc: score(pairs) };
   }
 
-  // semantic — over the same blurred signals
+  // semantic - over the same blurred signals
   const semPairs = new Set<string>();
   const semWhy: (Verdict & { pair: string })[] = [];
   for (const s of seeks) {
@@ -71,7 +71,7 @@ async function evaluate(distilled: DistilledAgent[]) {
   return { keyword: bestKw, semantic: { pairs: semPairs, sc: score(semPairs), why: semWhy } };
 }
 
-console.log("\n▶ murmur spike v2 — isolating intake vs matcher (2×2)\n");
+console.log("\n▶ murmur spike v2 - isolating intake vs matcher (2×2)\n");
 
 const normDistiller = new LLMDistiller();
 const verbDistiller = new LLMDistiller({ system: SYSTEM_PROMPT_VERBATIM, cacheTag: "verbatim" });
@@ -87,7 +87,7 @@ console.log("─ how intake re-tagged (normalized ⟵ verbatim) ───");
 for (const id of ["sofa-seller-fr", "bike-buyer-fr", "drill-seller-de", "handheld-buyer"]) {
   const n = normalized.find((d) => d.agentId === id)?.intents[0];
   const v = verbatim.find((d) => d.agentId === id)?.intents[0];
-  const tg = (i?: PrivateIntent) => (i ? (i.publicTags ?? i.tags).join(", ") : "—");
+  const tg = (i?: PrivateIntent) => (i ? (i.publicTags ?? i.tags).join(", ") : "-");
   console.log(`  ${id.padEnd(18)} norm:[${tg(n)}]\n  ${" ".padEnd(18)} verb:[${tg(v)}]`);
 }
 

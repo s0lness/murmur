@@ -45,7 +45,7 @@ const JUDGE_TOOL: Anthropic.Tool = {
 
 const SYSTEM = `You are the matching brain of a personal agent in an ambient-intent network.
 
-Your user has a private WANT. You overhear BLURRED public signals other agents broadcast (category, tags, region — never price or identity). Decide which signals are genuinely relevant to your user's want.
+Your user has a private WANT. You overhear BLURRED public signals other agents broadcast (category, tags, region - never price or identity). Decide which signals are genuinely relevant to your user's want.
 
 Be robust where keyword matching fails:
 - SYNONYMS / paraphrase: "couch" = "sofa" = "settee" = "canapé".
@@ -58,11 +58,11 @@ But REJECT coincidental keyword overlap that isn't a real match:
 
 A real match also needs the complementary side (a seeker wants what an offer provides) and a plausible region. Score 0–1; mark relevant=true only when you'd actually open a negotiation. Return a verdict for EVERY candidate.
 
-CLARIFY: if a candidate is a plausible match but ONE missing detail decides it (e.g. "Switch" vs "Switch 2", a size, a date window, condition), set relevant=false, score in 0.4–0.6, and \`clarify\` to ONE short question whose answer would resolve it — phrased to ask YOUR user (e.g. "Do you mean the original Switch or the Switch 2?"). For confirmed matches and clear non-matches, leave \`clarify\` empty.`;
+CLARIFY: if a candidate is a plausible match but ONE missing detail decides it (e.g. "Switch" vs "Switch 2", a size, a date window, condition), set relevant=false, score in 0.4–0.6, and \`clarify\` to ONE short question whose answer would resolve it - phrased to ask YOUR user (e.g. "Do you mean the original Switch or the Switch 2?"). For confirmed matches and clear non-matches, leave \`clarify\` empty.`;
 
 /**
  * murmur's semantic matcher. The agent matches its OWN private want against the
- * BLURRED public signals of others — so the privacy split holds (it never sees
+ * BLURRED public signals of others - so the privacy split holds (it never sees
  * anyone else's private fields). Disk-cached for reproducibility.
  */
 export class SemanticMatcher {
@@ -70,14 +70,14 @@ export class SemanticMatcher {
   constructor(client?: Anthropic) {
     this._client = client;
   }
-  // Lazy: build the client on first use, after env (.env) is loaded — so a
+  // Lazy: build the client on first use, after env (.env) is loaded - so a
   // module-level `new SemanticMatcher()` can't capture a missing API key.
   private client(): Anthropic {
     return (this._client ??= new Anthropic());
   }
 
   async judge(seeker: PrivateIntent, candidates: PrivateIntent[]): Promise<Verdict[]> {
-    // Candidates are reduced to their public blur — the privacy boundary.
+    // Candidates are reduced to their public blur - the privacy boundary.
     const signals = candidates.map((c) => {
       const s = blur(c, c.id);
       return { id: s.id, kind: s.kind, domain: s.domain, tags: s.tags, region: s.region };

@@ -2,8 +2,8 @@ import type { PrivateIntent, PublicSignal } from "../core/intent";
 import type { NegMessage, Session } from "../negotiate/protocol";
 
 /**
- * The decision layer of an agent. M0 ships a deterministic RuleBrain; M1 adds
- * an LLMBrain (Anthropic SDK) behind this same interface so a few agents can
+ * The decision layer of an agent. A deterministic RuleBrain ships today; an
+ * LLMBrain (Anthropic SDK) can sit behind this same interface so a few agents
  * negotiate with real language while the rest stay cheap and reproducible.
  */
 export interface Brain {
