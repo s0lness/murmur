@@ -21,6 +21,7 @@
     "multilateral": "tsx src/multilateral/demo.ts",
     "solver": "tsx src/solver/demo.ts",
     "measure": "tsx src/solver/measure.ts",
+    "bargaining": "tsx src/research/bargaining.ts",
     "view": "node viewer/serve.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
