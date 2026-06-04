@@ -16,13 +16,14 @@ ANTHROPIC_API_KEY=sk-ant-...
 TELEGRAM_BOT_TOKEN=...            # from @BotFather
 MURMUR_MODEL=claude-opus-4-8     # see "Model & cost" below
 MURMUR_CURRENCY=$                # symbol shown to users ($, £, €)
-MURMUR_HOST_ID=                  # optional: your Telegram user id, to DM you /feedback live
+MURMUR_HOST_HANDLE=s0lness       # optional: your Telegram @handle, to DM you /feedback live
 ```
 
 > **Rotate any key that's ever been pasted into a chat.** `.env` is gitignored - keep it that way.
 
-(To find your `MURMUR_HOST_ID`, DM the bot and read the `user` field in `logs/events.jsonl`, or
-message `@userinfobot`.)
+(Telegram can't DM a user by `@handle`, so the bot captures your numeric id the first time you
+message it - just `/start` the bot once after setting `MURMUR_HOST_HANDLE`. A numeric
+`MURMUR_HOST_ID=...` also works if you'd rather set it directly.)
 
 ## Launch
 
@@ -72,8 +73,9 @@ Commands: `/start /me /status /pass /clear /feedback /help` (plus `/rematch` and
 
 Peers can write in **any language**. The distiller normalises tags to English internally, so a
 French "vélo" and an English "bike" still match, and the semantic matcher bridges paraphrase
-across languages too. The bot's own replies are in English for this pilot (localising them is a
-later nicety, not a blocker).
+across languages too. The bot **replies in the user's own language** (en + fr ship today; add a
+locale by adding one entry to `src/server/i18n.ts`), picked from their Telegram client language.
+Item names inside a reply stay in their canonical English form, since that's the match key.
 
 ## Capturing the pilot (logs & feedback)
 
