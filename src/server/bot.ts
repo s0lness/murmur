@@ -22,23 +22,6 @@ const blurb = (i: PrivateIntent) => {
 const itemName = (i: PrivateIntent) => (i.publicTags ?? i.tags).slice(0, 3).join(" ");
 const userLabel = (u?: User) => (u?.handle ? `@${u.handle}` : u?.name ?? "your match");
 
-/** Two agents bargain inside the zone of agreement [floor, ceil] — each anchors
- *  from its own side and concedes toward the other each round. Deterministic;
- *  returns the agreed price (clamped to the ZOPA) and a short transcript. */
-function haggle(floor: number, ceil: number): { price: number; transcript: string[] } {
-  if (ceil <= floor) return { price: Math.round((floor + ceil) / 2), transcript: [] };
-  let ask = Math.round(floor * 1.4); // seller opens high
-  let bid = Math.round(ceil * 0.7); // buyer opens low
-  const transcript: string[] = [];
-  for (let r = 0; r < 6 && ask > bid; r++) {
-    transcript.push(`seller asks €${ask}, buyer offers €${bid}`);
-    const gap = ask - bid;
-    ask = Math.round(ask - 0.35 * gap);
-    bid = Math.round(bid + 0.35 * gap);
-  }
-  return { price: Math.min(ceil, Math.max(floor, Math.round((ask + bid) / 2))), transcript };
-}
-
 export function createBot(token: string, store: Store): Bot {
   const bot = new Bot(token);
   const distiller = new LLMDistiller();
@@ -332,14 +315,13 @@ export function createBot(token: string, store: Store): Bot {
     const sellerI = ai.kind === "offer" ? ai : bi.kind === "offer" ? bi : null;
 
     let price: number | null = null;
-    let transcript: string[] = [];
     if (buyerI?.valuation != null && sellerI?.valuation != null) {
-      // bounds use fallbacks: buyer won't pay above their alternative; seller won't take below theirs
+      // IR-aware fair price: midpoint of the fallback-bounded zone of agreement.
+      // (Research showed LLM haggling is worse than this on price — see src/research/bargaining.ts.)
       const floor = Math.max(sellerI.valuation, sellerI.fallback ?? 0);
       const ceil = Math.min(buyerI.valuation, buyerI.fallback ?? Infinity);
       if (ceil < floor) { await connect(m); return; } // no agreeable price after fallbacks
-      const h = haggle(floor, ceil);
-      price = h.price; transcript = h.transcript;
+      price = Math.round((floor + ceil) / 2);
     } else {
       price = sellerI?.valuation ?? buyerI?.valuation ?? null; // one-sided / unpriced
     }
@@ -352,8 +334,7 @@ export function createBot(token: string, store: Store): Bot {
     const item = itemName(ai.kind === "offer" ? ai : bi);
     const kb = (id: string) => new InlineKeyboard()
       .text("Approve", `d:${id}:approve`).text("Revise", `d:${id}:revise`).text("Abort", `d:${id}:abort`);
-    const tline = transcript.length ? `\n${transcript.map((t) => `· ${t}`).join("\n")}` : "";
-    const msg = `🤝 Your agents negotiated:${tline}\n→ agreed *€${price}* for *${item}*.\nApprove?`;
+    const msg = `💬 Fair price worked out: *€${price}* for *${item}*.\nApprove?`;
     await notify(m.aUser, msg, { parse_mode: "Markdown", reply_markup: kb(m.id) });
     await notify(m.bUser, msg, { parse_mode: "Markdown", reply_markup: kb(m.id) });
     if (m.aApprove && m.bApprove) await connect(m);
