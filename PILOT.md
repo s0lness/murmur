@@ -61,6 +61,9 @@ DM the bot in plain words - `"selling my road bike, around 150, around till Sund
 `"looking for a cheap monitor under 80"`, `"swap my breadmaker for a blender"`. The bot:
 
 1. **distills** the message into structured intents (only a blur is ever broadcast);
+   a fresh active intent that reads vague (low distiller confidence) gets one quiet
+   **enrich-then-recheck** pass - sharpened against the user's own standing wants, kept
+   only if it actually improved (no human bother). Toggle with `MURMUR_ENRICH=0`;
 2. **matches** against the pool (semantic judge for pairs; group-buys + barter rings, now
    with an LLM fuzzy-edge **failover** for substitutes the keyword matcher misses);
 3. proposes a **fair price** = midpoint of the fallback-bounded zone of agreement (no LLM
