@@ -40,6 +40,10 @@ export const ReconcileOutput = z.object({
 });
 export type ReconcileOutput = z.infer<typeof ReconcileOutput>;
 
+/** Enrich: a single vague intent, re-distilled and sharpened from user context. */
+export const EnrichOutput = z.object({ intent: DistilledIntent });
+export type EnrichOutput = z.infer<typeof EnrichOutput>;
+
 /** Triage a message: update the user's own wants, or relay a question to a match. */
 export const RouteOutput = z.object({
   action: z.enum(["portfolio", "ask"]),
@@ -114,6 +118,18 @@ export const EMIT_INTENTS_TOOL: Anthropic.Tool = {
     additionalProperties: false,
     properties: { intents: { type: "array", items: INTENT_ITEM } },
     required: ["intents"],
+  },
+};
+
+export const ENRICH_TOOL: Anthropic.Tool = {
+  name: "refine_intent",
+  description: "Return the single vague intent, sharpened using the user's context. Call exactly once.",
+  strict: true,
+  input_schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: { intent: INTENT_ITEM },
+    required: ["intent"],
   },
 };
 

@@ -4,8 +4,8 @@ import { modelId } from "../core/model";
 import { record } from "../core/usage";
 import { cached, cacheKey } from "./cache";
 import type { Distiller, PersonaUtterances } from "./distiller";
-import { SYSTEM_PROMPT, SYSTEM_PROMPT_ANSWER, SYSTEM_PROMPT_RECONCILE, SYSTEM_PROMPT_ROUTER } from "./prompt";
-import { ANSWER_TOOL, AnswerOutput, DistillerOutput, type DistilledIntent, EMIT_INTENTS_TOOL, RECONCILE_TOOL, ReconcileOutput, ROUTE_TOOL, RouteOutput } from "./schema";
+import { SYSTEM_PROMPT, SYSTEM_PROMPT_ANSWER, SYSTEM_PROMPT_ENRICH, SYSTEM_PROMPT_RECONCILE, SYSTEM_PROMPT_ROUTER } from "./prompt";
+import { ANSWER_TOOL, AnswerOutput, DistillerOutput, type DistilledIntent, EMIT_INTENTS_TOOL, ENRICH_TOOL, EnrichOutput, RECONCILE_TOOL, ReconcileOutput, ROUTE_TOOL, RouteOutput } from "./schema";
 
 /**
  * Distills natural-language utterances into structured PrivateIntents via a
@@ -47,8 +47,7 @@ export class LLMDistiller implements Distiller {
         messages: [{ role: "user", content: `The user (${input.persona}) said:\n${userText}` }],
       });
       record(response.usage);
-      record(response.usage);
-    const block = response.content.find((b) => b.type === "tool_use");
+      const block = response.content.find((b) => b.type === "tool_use");
       if (!block || block.type !== "tool_use") {
         throw new Error(`distiller: model did not call ${EMIT_INTENTS_TOOL.name}`);
       }
@@ -121,6 +120,44 @@ export class LLMDistiller implements Distiller {
       updates: out.updates,
       adds: out.adds.map((d, i) => toIntent(d, `add-${i}`, utterance)),
     };
+  }
+
+  /**
+   * Sharpen ONE vague intent against context about the user (their standing
+   * wants, used as a lightweight profile). One LLM call; returns the re-distilled
+   * intent. Identity fields (id, kind, domain, source) are preserved - enrichment
+   * sharpens, it never redefines. The CALLER decides whether to keep the result
+   * (see `clearer` in ./enrich): a sharpening that didn't help is discarded.
+   */
+  async enrich(intent: PrivateIntent, context: string): Promise<PrivateIntent> {
+    const payload = {
+      kind: intent.kind, domain: intent.domain,
+      tags: intent.tags, publicTags: intent.publicTags ?? intent.tags,
+      region: intent.region, qty: intent.qty ?? 1,
+      valuation: intent.valuation ?? null, fallback: intent.fallback ?? null,
+      substitutes: intent.substitutes ?? [], have: intent.have ?? [], want: intent.want ?? [],
+      confidence: intent.confidence ?? 0, active: intent.active !== false,
+      rationale: intent.rationale ?? "",
+    };
+    const response = await this.client().messages.create({
+      model: modelId(),
+      max_tokens: 1024,
+      system: [{ type: "text", text: SYSTEM_PROMPT_ENRICH, cache_control: { type: "ephemeral" } }],
+      tools: [ENRICH_TOOL],
+      tool_choice: { type: "tool", name: ENRICH_TOOL.name },
+      messages: [{
+        role: "user",
+        content: `Context about the user:\n${context}\n\nThe vague intent to sharpen (JSON):\n${JSON.stringify(payload)}`,
+      }],
+    });
+    record(response.usage);
+    const block = response.content.find((b) => b.type === "tool_use");
+    if (!block || block.type !== "tool_use") throw new Error("enrich: no tool call");
+    const out = toIntent(EnrichOutput.parse(block.input).intent, intent.id, intent.source ?? "");
+    // Preserve identity even if the model drifted - enrichment is not redefinition.
+    out.kind = intent.kind;
+    out.domain = intent.domain;
+    return out;
   }
 }
 

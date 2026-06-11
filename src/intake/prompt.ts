@@ -98,6 +98,26 @@ You maintain the user's STANDING portfolio of intents. You are given their curre
 Be conservative: only remove/update when the message clearly refers to an existing intent; otherwise add. Pure noise → all three lists empty. Do not re-add an intent that already exists unchanged.`;
 
 /**
+ * Enrich prompt: sharpen ONE vague intent using context about the user (their
+ * other standing wants act as a lightweight profile). Add only constraints the
+ * context clearly implies; never invent. Returns the single intent, re-distilled.
+ * The caller keeps the result only if confidence/specificity actually improved.
+ */
+export const SYSTEM_PROMPT_ENRICH = `${SYSTEM_PROMPT}
+
+# ENRICH MODE (overrides the closing instruction above)
+You are given ONE already-distilled intent that read as vague (low confidence), plus context about the user - chiefly their other standing wants, which act as a lightweight profile. Sharpen this single intent using ONLY what the context clearly implies:
+- add a more specific region if the user's other wants pin them to a place;
+- add tags / substitutes / a domain refinement the context supports;
+- carry over a price the user clearly stated elsewhere (else leave valuation null).
+
+HARD RULES:
+- Do NOT change \`kind\` or the core thing being sought/offered. Sharpen, don't redefine.
+- Do NOT invent constraints the context does not support. If nothing in the context sharpens it, return the intent essentially unchanged.
+- Raise \`confidence\` only if the added context genuinely makes the intent more actionable.
+Call **refine_intent** (not emit_intents) exactly once with the single sharpened intent.`;
+
+/**
  * Ablation prompt: same job, but tags must be VERBATIM - the user's literal
  * words in their original language, no translation/synonyms/normalization. Used
  * by the spike to switch OFF intake's semantic lifting and isolate how much of

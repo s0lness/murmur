@@ -1,6 +1,7 @@
 import { Bot, type Context, InlineKeyboard } from "grammy";
 import { type PrivateIntent } from "../core/intent";
 import { LLMDistiller } from "../intake/llmDistiller";
+import { clearer, needsEnrich } from "../intake/enrich";
 import { barterCycles, groupBuys, type Party } from "../multilateral/detect";
 import { money } from "../core/currency";
 import { buildAliases, proposeEdges, type ResidualIntent } from "../solver/helper";
@@ -275,11 +276,29 @@ export function createBot(token: string, store: Store): Bot {
 
     for (const id of removeIds) store.removeIntent(id);
     for (const u of updates) store.updateIntent(u.id, u.valuation ?? undefined, u.active);
-    const added = adds.map((i) => store.addIntent(ctx.from!.id, i));
+
+    // Enrich-then-recheck: a fresh active intent that reads vague (low confidence)
+    // gets ONE sharpening pass against the user's standing wants (their de-facto
+    // profile), kept only if it genuinely improved. No human bother; bounded cost
+    // (only fires on low-confidence adds). Kill with MURMUR_ENRICH=0.
+    const enrichOn = (process.env.MURMUR_ENRICH ?? "1") !== "0" && process.env.MURMUR_ENRICH !== "false";
+    let enrichedCount = 0;
+    const sharpened = !enrichOn ? adds : await Promise.all(adds.map(async (i) => {
+      if (!needsEnrich(i)) return i;
+      try {
+        const others = store.intentsOf(ctx.from!.id).filter((s) => s.intent.active !== false).map((s) => human(s.intent, lang));
+        const profile = `${ctx.from!.first_name ?? "a friend"}${others.length ? `. Their other standing wants: ${others.join("; ")}` : ""}`;
+        const cand = await distiller.enrich(i, profile);
+        if (clearer(i, cand)) { enrichedCount++; return cand; }
+      } catch { /* enrichment is best-effort - fall back to the original intent */ }
+      return i;
+    }));
+
+    const added = sharpened.map((i) => store.addIntent(ctx.from!.id, i));
     logEvent("intake", {
       user: ctx.from.id, text: utterance,
       added: added.map((s) => ({ kind: s.intent.kind, domain: s.intent.domain, tags: s.intent.publicTags ?? s.intent.tags, active: s.intent.active !== false })),
-      updated: updates.length, removed: removeIds.length,
+      updated: updates.length, removed: removeIds.length, enriched: enrichedCount,
     });
 
     const lines: string[] = [];
