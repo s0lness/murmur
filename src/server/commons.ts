@@ -1,5 +1,6 @@
 import type { Kind } from "../core/intent";
 import { keywordScore } from "../matching/keywordMatcher";
+import { bigramScore } from "../matching/bigramMatcher";
 import { SemanticMatcher } from "../matching/semanticMatcher";
 import type { StoredIntent } from "./store";
 
@@ -19,8 +20,13 @@ function prefilter(fresh: StoredIntent, candidates: StoredIntent[]): StoredInten
   const ftags = fresh.intent.publicTags ?? fresh.intent.tags;
   return candidates
     .map((c) => {
+      const ctags = c.intent.publicTags ?? c.intent.tags;
       const sameDomain = c.intent.domain === fresh.intent.domain;
-      const overlap = keywordScore(ftags, c.intent.publicTags ?? c.intent.tags);
+      // Widen recall past exact-token overlap: a fuzzy bigram score rescues
+      // morphological / spelling / spacing variants ("vélos" vs "velo") that
+      // token Jaccard scores 0, so they survive to the semantic judge. Max of
+      // the two, not a blend, so a strong exact match is never diluted.
+      const overlap = Math.max(keywordScore(ftags, ctags), bigramScore(ftags, ctags));
       return { c, keep: sameDomain || overlap > 0, rank: (sameDomain ? 1 : 0) + overlap };
     })
     .filter((x) => x.keep)
