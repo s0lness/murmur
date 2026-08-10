@@ -7,7 +7,7 @@ a fair price.
 
 ## Prerequisites
 
-- Node on PATH (`node -v`). On Windows PowerShell: `$env:Path = "$env:ProgramFiles\nodejs;$env:Path"`.
+- Node >= 20.19 on PATH (`node -v`).
 - `npm install` once.
 - `murmur/.env` (gitignored) with:
 
@@ -16,7 +16,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 TELEGRAM_BOT_TOKEN=...            # from @BotFather
 MURMUR_MODEL=claude-opus-4-8     # see "Model & cost" below
 MURMUR_CURRENCY=$                # symbol shown to users ($, £, €)
-MURMUR_HOST_HANDLE=s0lness       # optional: your Telegram @handle, to DM you /feedback live
+MURMUR_HOST_HANDLE=yourhandle    # optional: your Telegram @handle, to DM you /feedback live
 ```
 
 > **Rotate any key that's ever been pasted into a chat.** `.env` is gitignored - keep it that way.

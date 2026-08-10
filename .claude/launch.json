@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "murmur-viewer",
-      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeExecutable": "node",
       "runtimeArgs": ["viewer/serve.mjs"],
       "port": 5050
     }

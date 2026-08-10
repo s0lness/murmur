@@ -13,5 +13,5 @@ viewer/fuzz-live.json
 # pilot event logs (contain real user messages)
 logs/
 
-# gazette credential (token embedded in post_url) - never commit
+# local credential file, never commit
 .gazette

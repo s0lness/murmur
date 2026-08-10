@@ -53,9 +53,6 @@ Needs a `.env` at the repo root (gitignored) with `ANTHROPIC_API_KEY`,
 `TELEGRAM_BOT_TOKEN`, `MURMUR_MODEL`, `MURMUR_CURRENCY`. Full setup in
 [PILOT.md](PILOT.md).
 
-On Windows PowerShell, if `node` is not on PATH:
-`$env:Path = "$env:ProgramFiles\nodejs;$env:Path"`.
-
 ## Status (2026-08-10)
 
 - Telegram pilot: live and working. The host dashboard shows the pool,
